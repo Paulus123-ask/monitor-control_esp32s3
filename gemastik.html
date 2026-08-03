@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Monitoring Gas ESP32-S3</title>
+  <!-- Library MQTT via WebSocket -->
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f4f7f6;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+    .card {
+      background: white;
+      padding: 30px;
+      border-radius: 15px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+      text-align: center;
+      width: 320px;
+    }
+    .status {
+      font-size: 14px;
+      padding: 6px 12px;
+      border-radius: 20px;
+      display: inline-block;
+      margin-bottom: 20px;
+    }
+    .connected { background: #e6f4ea; color: #137333; }
+    .disconnected { background: #fce8e6; color: #c5221f; }
+    .ppm-value {
+      font-size: 54px;
+      font-weight: bold;
+      color: #202124;
+      margin: 10px 0;
+    }
+    .unit { font-size: 20px; color: #5f6368; }
+    .detail {
+      margin-top: 20px;
+      font-size: 14px;
+      color: #70757a;
+      border-top: 1px solid #eee;
+      padding-top: 15px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <h2>Monitoring Gas</h2>
+    <div id="status" class="status disconnected">Terputus dari Broker</div>
+    
+    <div class="ppm-value" id="ppm">0</div>
+    <div class="unit">PPM</div>
+
+    <div class="detail">
+      <div>Tegangan: <span id="voltage">0.00</span> V</div>
+      <div>ADC: <span id="adc">0</span></div>
+    </div>
+  </div>
+
+  <script>
+    // Config Broker MQTT via WebSocket (Port 8884 untuk WSS/HTTPS)
+    const broker = 'wss://broker.hivemq.com:8884/mqtt';
+    const topic = 'esp32s3/sensor/gas'; // Samakan dengan topik di program ESP32-S3 Anda
+
+    const client = mqtt.connect(broker);
+
+    const statusEl = document.getElementById('status');
+    const ppmEl = document.getElementById('ppm');
+    const voltageEl = document.getElementById('voltage');
+    const adcEl = document.getElementById('adc');
+
+    client.on('connect', () => {
+      statusEl.innerText = 'Terhubung ke MQTT';
+      statusEl.className = 'status connected';
+      client.subscribe(topic);
+    });
+
+    client.on('offline', () => {
+      statusEl.innerText = 'Terputus dari Broker';
+      statusEl.className = 'status disconnected';
+    });
+
+    client.on('message', (t, message) => {
+      try {
+        const data = JSON.parse(message.toString());
+        ppmEl.innerText = data.ppm !== undefined ? data.ppm : 0;
+        voltageEl.innerText = data.voltage !== undefined ? data.voltage : 0;
+        adcEl.innerText = data.adc !== undefined ? data.adc : 0;
+      } catch (e) {
+        console.error("Format data bukan JSON:", message.toString());
+      }
+    });
+  </script>
+</body>
+</html>
