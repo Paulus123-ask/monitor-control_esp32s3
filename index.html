@@ -5,16 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SORA CONSOLE - Smart LPG Safety Monitoring</title>
   
-  <!-- Favicon Logo Tab Browser -->
   <link rel="icon" type="image/png" href="favicon.png">
-  
-  <!-- Font Inter & FontAwesome Icon -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   
-  <!-- Library MQTT via WebSocket & Chart.js -->
+  <!-- MQTT via WebSocket & Chart.js -->
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Firebase SDK (Compat Version untuk HTML Statis) -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
 
   <style>
     * {
@@ -33,6 +34,112 @@
     .container {
       max-width: 1200px;
       margin: 0 auto;
+    }
+
+    /* MODAL LOGIN STYLES */
+    .login-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(15, 23, 42, 0.8);
+      backdrop-filter: blur(4px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+    }
+
+    .login-box {
+      background: #ffffff;
+      padding: 32px;
+      border-radius: 16px;
+      width: 100%;
+      max-width: 380px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+      text-align: center;
+    }
+
+    .login-box .logo-icon {
+      background: #3b82f6;
+      color: white;
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      margin: 0 auto 12px auto;
+    }
+
+    .login-box h2 {
+      font-size: 20px;
+      font-weight: 700;
+      color: #0f172a;
+      margin-bottom: 4px;
+    }
+
+    .login-box p {
+      font-size: 13px;
+      color: #64748b;
+      margin-bottom: 20px;
+    }
+
+    .input-group {
+      text-align: left;
+      margin-bottom: 14px;
+    }
+
+    .input-group label {
+      display: block;
+      font-size: 11px;
+      font-weight: 700;
+      color: #64748b;
+      margin-bottom: 6px;
+    }
+
+    .input-group input {
+      width: 100%;
+      padding: 10px 14px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 14px;
+      outline: none;
+      transition: border 0.2s;
+    }
+
+    .input-group input:focus {
+      border-color: #3b82f6;
+    }
+
+    .btn-submit {
+      width: 100%;
+      padding: 12px;
+      background: #3b82f6;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 14px;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: background 0.2s;
+    }
+
+    .btn-submit:hover {
+      background: #2563eb;
+    }
+
+    .error-msg {
+      color: #ef4444;
+      font-size: 12px;
+      margin-top: 12px;
+      display: none;
+      background: #fef2f2;
+      padding: 8px;
+      border-radius: 6px;
     }
 
     /* TOP NAVBAR */
@@ -89,14 +196,14 @@
       gap: 10px;
     }
 
-    .btn-install {
-      background: #6366f1;
-      color: white;
+    .btn-logout {
+      background: #fee2e2;
+      color: #991b1b;
       border: none;
-      padding: 8px 16px;
+      padding: 8px 14px;
       border-radius: 8px;
       font-weight: 600;
-      font-size: 13px;
+      font-size: 12px;
       cursor: pointer;
       display: flex;
       align-items: center;
@@ -125,7 +232,7 @@
       gap: 6px;
     }
 
-    /* LOCATION & STATUS HEADER CARD */
+    /* HEADER CARD */
     .header-card {
       background: #ffffff;
       padding: 20px 24px;
@@ -182,7 +289,6 @@
       margin-top: 2px;
     }
 
-    /* SECTION TITLE */
     .section-title {
       font-size: 11px;
       font-weight: 700;
@@ -194,7 +300,6 @@
       gap: 6px;
     }
 
-    /* METRIC CARDS GRID */
     .metrics-grid {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
@@ -260,7 +365,6 @@
     .tag-green { background: #f0fdf4; color: #16a34a; }
     .tag-blue { background: #eff6ff; color: #2563eb; }
 
-    /* CONTROLS & MAIN CONTENT GRID */
     .controls-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
@@ -301,7 +405,6 @@
     .icon-buzzer { background: #fef2f2; color: #dc2626; }
     .icon-bell { background: #eff6ff; color: #2563eb; }
 
-    /* BOTTOM DASHBOARD GRID (CHART & LOCATION) */
     .bottom-grid {
       display: grid;
       grid-template-columns: 2fr 1fr;
@@ -376,7 +479,6 @@
       color: #1e293b;
     }
 
-    /* FOOTER */
     .footer {
       display: flex;
       justify-content: space-between;
@@ -386,7 +488,6 @@
       color: #94a3b8;
     }
 
-    /* RESPONSIVE */
     @media (max-width: 900px) {
       .metrics-grid, .controls-grid, .bottom-grid {
         grid-template-columns: 1fr;
@@ -396,8 +497,30 @@
 </head>
 <body>
 
+  <!-- MODAL LOGIN -->
+  <div class="login-overlay" id="loginModal">
+    <div class="login-box">
+      <div class="logo-icon"><i class="fa-solid fa-shield-halved"></i></div>
+      <h2>SORA CONSOLE</h2>
+      <p>Masukan email & kata sandi terdaftar</p>
+
+      <form id="loginForm" onsubmit="event.preventDefault(); handleLogin();">
+        <div class="input-group">
+          <label>EMAIL ADMIN</label>
+          <input type="email" id="loginEmail" placeholder="admin@sora-monitoring.id" required>
+        </div>
+        <div class="input-group">
+          <label>KATA SANDI</label>
+          <input type="password" id="loginPassword" placeholder="••••••••" required>
+        </div>
+        <button type="submit" class="btn-submit" id="btnSubmitLogin">Masuk ke System</button>
+        <div class="error-msg" id="authError"></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- CONTAINER KONTEN DASBOR -->
   <div class="container">
-    <!-- TOP NAVBAR -->
     <div class="navbar">
       <div class="logo-area">
         <div class="logo-icon"><i class="fa-solid fa-shield-halved"></i></div>
@@ -406,11 +529,11 @@
         </div>
       </div>
       <div class="nav-center">
-        admin@sora-monitoring.id<br>
+        <span id="userEmailNav">memuat...</span><br>
         <span>Sistem Monitoring LPG IoT v2.0</span>
       </div>
       <div class="nav-actions">
-        <button class="btn-install"><i class="fa-solid fa-download"></i> INSTALL</button>
+        <button class="btn-logout" onclick="handleLogout()"><i class="fa-solid fa-right-from-bracket"></i> Keluar</button>
         <button class="btn-reload" onclick="location.reload()"><i class="fa-solid fa-rotate-right"></i></button>
         <div class="badge-terhubung" id="mqttStatusBadge">
           <i class="fa-solid fa-wifi"></i> <span id="statusText">TERHUBUNG</span>
@@ -418,7 +541,6 @@
       </div>
     </div>
 
-    <!-- NODE HEADER CARD -->
     <div class="header-card">
       <div class="node-info">
         <h2>Dapur Utama <span class="badge-sub">TERHUBUNG</span></h2>
@@ -432,22 +554,19 @@
       </div>
     </div>
 
-    <!-- SECTION 1: MONITORING -->
     <div class="section-title"><i class="fa-solid fa-sliders"></i> MONITORING</div>
     <div class="metrics-grid">
-      <!-- Card 1: Konsentrasi Gas -->
       <div class="metric-card">
         <div class="metric-left">
           <div class="icon-box icon-lpg"><i class="fa-solid fa-fire-flame-simple"></i></div>
           <div class="metric-info">
             <label>KONSENTRASI LPG</label>
-            <div class="value"><span id="ppmVal">486</span> <span style="font-size:12px; font-weight:normal;">ppm</span></div>
+            <div class="value"><span id="ppmVal">0</span> <span style="font-size:12px; font-weight:normal;">ppm</span></div>
           </div>
         </div>
         <div class="status-tag tag-green" id="ppmTag">AMAN <i class="fa-solid fa-chevron-right"></i></div>
       </div>
 
-      <!-- Card 2: Status Kebocoran -->
       <div class="metric-card">
         <div class="metric-left">
           <div class="icon-box icon-warning"><i class="fa-solid fa-triangle-exclamation"></i></div>
@@ -459,7 +578,6 @@
         <div class="status-tag tag-green" id="leakTag">AMAN <i class="fa-solid fa-chevron-right"></i></div>
       </div>
 
-      <!-- Card 3: Koneksi Perangkat -->
       <div class="metric-card">
         <div class="metric-left">
           <div class="icon-box icon-wifi"><i class="fa-solid fa-wifi"></i></div>
@@ -471,21 +589,19 @@
         <div class="status-tag tag-green">AKTIF <i class="fa-solid fa-chevron-right"></i></div>
       </div>
 
-      <!-- Card 4: Pembacaan Terakhir -->
       <div class="metric-card">
         <div class="metric-left">
           <div class="icon-box icon-time"><i class="fa-regular fa-clock"></i></div>
           <div class="metric-info">
             <label>PEMBACAAN TERAKHIR</label>
-            <div class="value" id="lastDateVal" style="font-size:13px;">31 Mei 2026</div>
-            <div style="font-size:10px; color:#94a3b8;" id="lastTimeVal">22:31 WIB</div>
+            <div class="value" id="lastDateVal" style="font-size:13px;">-</div>
+            <div style="font-size:10px; color:#94a3b8;" id="lastTimeVal">-</div>
           </div>
         </div>
         <div class="status-tag tag-blue">TERBARU <i class="fa-solid fa-chevron-right"></i></div>
       </div>
     </div>
 
-    <!-- SECTION 2: KONTROL DAN PERINGATAN -->
     <div class="section-title"><i class="fa-solid fa-sliders"></i> KONTROL DAN PERINGATAN</div>
     <div class="controls-grid">
       <div class="control-card">
@@ -513,9 +629,7 @@
       </div>
     </div>
 
-    <!-- SECTION 3: GRAFIK & LOKASI -->
     <div class="bottom-grid">
-      <!-- Chart -->
       <div class="chart-card">
         <div class="card-header-flex">
           <h3><i class="fa-solid fa-chart-line" style="color:#2563eb;"></i> GRAFIK KONSENTRASI LPG</h3>
@@ -526,7 +640,6 @@
         <canvas id="soraChart" height="150"></canvas>
       </div>
 
-      <!-- Location Info -->
       <div class="info-list-card">
         <div class="info-item">
           <div class="info-item-left">
@@ -563,7 +676,6 @@
       </div>
     </div>
 
-    <!-- FOOTER -->
     <div class="footer">
       <div><i class="fa-regular fa-copyright"></i> SORA © 2026 — Smart LPG Safety Monitoring</div>
       <div id="updatedAgo"><i class="fa-regular fa-clock"></i> diperbarui baru saja</div>
@@ -571,19 +683,38 @@
   </div>
 
   <script>
-    // Config Broker MQTT via WebSocket (Public HiveMQ)
-    const broker = 'wss://broker.hivemq.com:8884/mqtt';
-    const topic = 'esp32s3/sensor/gas'; // Topik MQTT ESP32 Anda
+    // ==========================================
+    // 1. INISIALISASI FIREBASE AUTHENTICATION
+    // ==========================================
+    const firebaseConfig = {
+      apiKey: "AIzaSyCVOPckXVt7tJ4WLdO0j-fbrNnuprSzdtg",
+      authDomain: "recognition-face-3546f.firebaseapp.com",
+      databaseURL: "https://recognition-face-3546f-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "recognition-face-3546f",
+      storageBucket: "recognition-face-3546f.firebasestorage.app",
+      messagingSenderId: "346852831790",
+      appId: "1:346852831790:web:6e29a844136bc7d8faa5bf",
+      measurementId: "G-R0Z35L694R"
+    };
 
-    // Setup Chart
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+
+    // ==========================================
+    // 2. KONFIGURASI MQTT & CHART
+    // ==========================================
+    const broker = 'wss://broker.hivemq.com:8884/mqtt';
+    const topic = 'esp32s3/sensor/gas';
+    let client = null;
+
     const ctx = document.getElementById('soraChart').getContext('2d');
     const soraChart = new Chart(ctx, {
       type: 'line',
       data: {
-        labels: ['22:00', '01:00', '04:00', '07:00', '10:00', '13:00', '16:00', '19:00', '22:00'],
+        labels: [],
         datasets: [{
           label: 'Konsentrasi (ppm)',
-          data: [450, 500, 420, 600, 450, 580, 430, 420, 486],
+          data: [],
           borderColor: '#16a34a',
           backgroundColor: 'rgba(22, 163, 74, 0.1)',
           fill: true,
@@ -598,89 +729,148 @@
         scales: {
           y: {
             min: 0,
-            max: 1500,
+            max: 3000,
             ticks: { stepSize: 500 }
           }
         }
       }
     });
 
-    // Koneksi MQTT Client
-    const client = mqtt.connect(broker);
+    // ==========================================
+    // 3. LOGIKA AUTENTIKASI (LOGIN/LOGOUT)
+    // ==========================================
+    auth.onAuthStateChanged((user) => {
+      const loginModal = document.getElementById('loginModal');
+      const userEmailNav = document.getElementById('userEmailNav');
 
-    client.on('connect', () => {
-      document.getElementById('mqttStatusBadge').style.background = '#dcfce7';
-      document.getElementById('mqttStatusBadge').style.color = '#166534';
-      document.getElementById('statusText').innerText = 'TERHUBUNG';
-      client.subscribe(topic);
-    });
+      if (user) {
+        // Pengguna berhasil login
+        loginModal.style.display = 'none';
+        userEmailNav.innerText = user.email;
 
-    client.on('offline', () => {
-      document.getElementById('mqttStatusBadge').style.background = '#fee2e2';
-      document.getElementById('mqttStatusBadge').style.color = '#991b1b';
-      document.getElementById('statusText').innerText = 'TERPUTUS';
-    });
-
-    client.on('message', (t, message) => {
-      try {
-        const data = JSON.parse(message.toString());
-        const ppm = Math.round(data.ppm || 0);
-
-        // Update Nilai PPM
-        document.getElementById('ppmVal').innerText = ppm;
-
-        // Update Waktu Terakhir
-        const now = new Date();
-        const optionsDate = { day: 'numeric', month: 'long', year: 'numeric' };
-        document.getElementById('lastDateVal').innerText = now.toLocaleDateString('id-ID', optionsDate);
-        document.getElementById('lastTimeVal').innerText = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
-
-        // Logika Status Kebocoran
-        const ppmTag = document.getElementById('ppmTag');
-        const leakTag = document.getElementById('leakTag');
-        const leakVal = document.getElementById('leakStatusVal');
-        const overall = document.getElementById('overallStatusText');
-
-        if (ppm < 1000) {
-          ppmTag.className = 'status-tag tag-green';
-          ppmTag.innerHTML = 'AMAN <i class="fa-solid fa-chevron-right"></i>';
-          leakTag.className = 'status-tag tag-green';
-          leakTag.innerHTML = 'AMAN <i class="fa-solid fa-chevron-right"></i>';
-          leakVal.innerText = 'Tidak Terdeteksi';
-          overall.style.color = '#16a34a';
-          overall.innerHTML = '<i class="fa-solid fa-location-dot"></i> AMAN';
-        } else if (ppm >= 1000 && ppm < 2500) {
-          ppmTag.className = 'status-tag';
-          ppmTag.style.background = '#fefce8';
-          ppmTag.style.color = '#ca8a04';
-          ppmTag.innerHTML = 'WASPADA <i class="fa-solid fa-chevron-right"></i>';
-          leakVal.innerText = 'Terdeteksi Ringan';
-          overall.style.color = '#ca8a04';
-          overall.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> WASPADA';
-        } else {
-          ppmTag.className = 'status-tag';
-          ppmTag.style.background = '#fee2e2';
-          ppmTag.style.color = '#dc2626';
-          ppmTag.innerHTML = 'BAHAYA <i class="fa-solid fa-chevron-right"></i>';
-          leakVal.innerText = 'KEBOCORAN BAHAYA!';
-          overall.style.color = '#dc2626';
-          overall.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> BAHAYA';
+        // Hubungkan ke MQTT jika belum terhubung
+        if (!client) {
+          initMqttConnection();
         }
+      } else {
+        // Pengguna belum/sudah logout
+        loginModal.style.display = 'flex';
+        userEmailNav.innerText = 'Tidak Terautentikasi';
 
-        // Update Chart
-        const timeStr = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-        if (soraChart.data.labels.length > 9) {
-          soraChart.data.labels.shift();
-          soraChart.data.datasets[0].data.shift();
+        // Putuskan koneksi MQTT
+        if (client) {
+          client.end();
+          client = null;
         }
-        soraChart.data.labels.push(timeStr);
-        soraChart.data.datasets[0].data.push(ppm);
-        soraChart.update();
-
-      } catch (e) {
-        console.error("Data bukan format JSON", e);
       }
     });
+
+    function handleLogin() {
+      const email = document.getElementById('loginEmail').value;
+      const password = document.getElementById('loginPassword').value;
+      const errorEl = document.getElementById('authError');
+      const btnSubmit = document.getElementById('btnSubmitLogin');
+
+      errorEl.style.display = 'none';
+      btnSubmit.innerText = 'Memproses...';
+
+      auth.signInWithEmailAndPassword(email, password)
+        .then(() => {
+          btnSubmit.innerText = 'Masuk ke System';
+        })
+        .catch((error) => {
+          btnSubmit.innerText = 'Masuk ke System';
+          errorEl.style.display = 'block';
+          if (error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
+            errorEl.innerText = 'Email atau kata sandi salah.';
+          } else {
+            errorEl.innerText = error.message;
+          }
+        });
+    }
+
+    function handleLogout() {
+      auth.signOut().then(() => {
+        location.reload();
+      });
+    }
+
+    // ==========================================
+    // 4. KONEKSI MQTT CLIENT
+    // ==========================================
+    function initMqttConnection() {
+      client = mqtt.connect(broker);
+
+      client.on('connect', () => {
+        document.getElementById('mqttStatusBadge').style.background = '#dcfce7';
+        document.getElementById('mqttStatusBadge').style.color = '#166534';
+        document.getElementById('statusText').innerText = 'TERHUBUNG';
+        client.subscribe(topic);
+      });
+
+      client.on('offline', () => {
+        document.getElementById('mqttStatusBadge').style.background = '#fee2e2';
+        document.getElementById('mqttStatusBadge').style.color = '#991b1b';
+        document.getElementById('statusText').innerText = 'TERPUTUS';
+      });
+
+      client.on('message', (t, message) => {
+        try {
+          const data = JSON.parse(message.toString());
+          const ppm = Math.round(data.ppm || 0);
+
+          document.getElementById('ppmVal').innerText = ppm;
+
+          const now = new Date();
+          const optionsDate = { day: 'numeric', month: 'long', year: 'numeric' };
+          document.getElementById('lastDateVal').innerText = now.toLocaleDateString('id-ID', optionsDate);
+          document.getElementById('lastTimeVal').innerText = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
+
+          const ppmTag = document.getElementById('ppmTag');
+          const leakTag = document.getElementById('leakTag');
+          const leakVal = document.getElementById('leakStatusVal');
+          const overall = document.getElementById('overallStatusText');
+
+          if (ppm < 1000) {
+            ppmTag.className = 'status-tag tag-green';
+            ppmTag.innerHTML = 'AMAN <i class="fa-solid fa-chevron-right"></i>';
+            leakTag.className = 'status-tag tag-green';
+            leakTag.innerHTML = 'AMAN <i class="fa-solid fa-chevron-right"></i>';
+            leakVal.innerText = 'Tidak Terdeteksi';
+            overall.style.color = '#16a34a';
+            overall.innerHTML = '<i class="fa-solid fa-location-dot"></i> AMAN';
+          } else if (ppm >= 1000 && ppm < 2500) {
+            ppmTag.className = 'status-tag';
+            ppmTag.style.background = '#fefce8';
+            ppmTag.style.color = '#ca8a04';
+            ppmTag.innerHTML = 'WASPADA <i class="fa-solid fa-chevron-right"></i>';
+            leakVal.innerText = 'Terdeteksi Ringan';
+            overall.style.color = '#ca8a04';
+            overall.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> WASPADA';
+          } else {
+            ppmTag.className = 'status-tag';
+            ppmTag.style.background = '#fee2e2';
+            ppmTag.style.color = '#dc2626';
+            ppmTag.innerHTML = 'BAHAYA <i class="fa-solid fa-chevron-right"></i>';
+            leakVal.innerText = 'KEBOCORAN BAHAYA!';
+            overall.style.color = '#dc2626';
+            overall.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> BAHAYA';
+          }
+
+          const timeStr = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+          if (soraChart.data.labels.length > 9) {
+            soraChart.data.labels.shift();
+            soraChart.data.datasets[0].data.shift();
+          }
+          soraChart.data.labels.push(timeStr);
+          soraChart.data.datasets[0].data.push(ppm);
+          soraChart.update();
+
+        } catch (e) {
+          console.error("Data bukan format JSON valid", e);
+        }
+      });
+    }
   </script>
 </body>
 </html>
