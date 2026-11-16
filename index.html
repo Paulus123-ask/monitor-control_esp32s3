@@ -1,876 +1,144 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SORA CONSOLE - Smart LPG Safety Monitoring</title>
-  
-  <link rel="icon" type="image/png" href="favicon.png">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  
-  <!-- MQTT via WebSocket & Chart.js -->
-  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-  <!-- Firebase SDK (Compat Version untuk HTML Statis) -->
-  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
-
-  <style>
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-      font-family: 'Inter', sans-serif;
-    }
-
-    body {
-      background-color: #f4f7f9;
-      color: #334155;
-      padding: 20px;
-    }
-
-    .container {
-      max-width: 1200px;
-      margin: 0 auto;
-    }
-
-    /* MODAL LOGIN STYLES */
-    .login-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      background: rgba(15, 23, 42, 0.8);
-      backdrop-filter: blur(4px);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 10000;
-    }
-
-    .login-box {
-      background: #ffffff;
-      padding: 32px;
-      border-radius: 16px;
-      width: 100%;
-      max-width: 380px;
-      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
-      text-align: center;
-    }
-
-    .login-box .logo-icon {
-      background: #3b82f6;
-      color: white;
-      width: 48px;
-      height: 48px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 22px;
-      margin: 0 auto 12px auto;
-    }
-
-    .login-box h2 {
-      font-size: 20px;
-      font-weight: 700;
-      color: #0f172a;
-      margin-bottom: 4px;
-    }
-
-    .login-box p {
-      font-size: 13px;
-      color: #64748b;
-      margin-bottom: 20px;
-    }
-
-    .input-group {
-      text-align: left;
-      margin-bottom: 14px;
-    }
-
-    .input-group label {
-      display: block;
-      font-size: 11px;
-      font-weight: 700;
-      color: #64748b;
-      margin-bottom: 6px;
-    }
-
-    .input-group input {
-      width: 100%;
-      padding: 10px 14px;
-      border: 1px solid #cbd5e1;
-      border-radius: 8px;
-      font-size: 14px;
-      outline: none;
-      transition: border 0.2s;
-    }
-
-    .input-group input:focus {
-      border-color: #3b82f6;
-    }
-
-    .btn-submit {
-      width: 100%;
-      padding: 12px;
-      background: #3b82f6;
-      color: white;
-      border: none;
-      border-radius: 8px;
-      font-weight: 600;
-      font-size: 14px;
-      cursor: pointer;
-      margin-top: 8px;
-      transition: background 0.2s;
-    }
-
-    .btn-submit:hover {
-      background: #2563eb;
-    }
-
-    .error-msg {
-      color: #ef4444;
-      font-size: 12px;
-      margin-top: 12px;
-      display: none;
-      background: #fef2f2;
-      padding: 8px;
-      border-radius: 6px;
-    }
-
-    /* TOP NAVBAR */
-    .navbar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      background: #ffffff;
-      padding: 12px 24px;
-      border-radius: 12px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.03);
-      margin-bottom: 16px;
-    }
-
-    .logo-area {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .logo-icon {
-      background: #3b82f6;
-      color: white;
-      width: 36px;
-      height: 36px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 18px;
-    }
-
-    .logo-text h1 {
-      font-size: 18px;
-      font-weight: 700;
-      color: #0f172a;
-      letter-spacing: 0.5px;
-    }
-
-    .nav-center {
-      text-align: center;
-      font-size: 12px;
-      color: #64748b;
-    }
-
-    .nav-center span {
-      font-weight: 600;
-      color: #334155;
-    }
-
-    .nav-actions {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .btn-logout {
-      background: #fee2e2;
-      color: #991b1b;
-      border: none;
-      padding: 8px 14px;
-      border-radius: 8px;
-      font-weight: 600;
-      font-size: 12px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    .btn-reload {
-      background: #f1f5f9;
-      border: none;
-      width: 34px;
-      height: 34px;
-      border-radius: 8px;
-      cursor: pointer;
-      color: #475569;
-    }
-
-    .badge-terhubung {
-      background: #dcfce7;
-      color: #166534;
-      padding: 6px 14px;
-      border-radius: 20px;
-      font-size: 13px;
-      font-weight: 600;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    /* HEADER CARD */
-    .header-card {
-      background: #ffffff;
-      padding: 20px 24px;
-      border-radius: 12px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.03);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 20px;
-    }
-
-    .node-info h2 {
-      font-size: 20px;
-      font-weight: 700;
-      color: #0f172a;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .badge-sub {
-      background: #dcfce7;
-      color: #15803d;
-      font-size: 11px;
-      padding: 2px 8px;
-      border-radius: 12px;
-      font-weight: 600;
-    }
-
-    .node-id {
-      font-size: 12px;
-      color: #94a3b8;
-      margin-top: 4px;
-    }
-
-    .overall-status {
-      text-align: right;
-    }
-
-    .overall-status span {
-      font-size: 11px;
-      color: #94a3b8;
-      font-weight: 600;
-      letter-spacing: 0.5px;
-    }
-
-    .status-aman-text {
-      color: #16a34a;
-      font-weight: 700;
-      font-size: 16px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      margin-top: 2px;
-    }
-
-    .section-title {
-      font-size: 11px;
-      font-weight: 700;
-      color: #94a3b8;
-      letter-spacing: 1px;
-      margin: 16px 0 10px 0;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    .metrics-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 16px;
-    }
-
-    .metric-card {
-      background: #ffffff;
-      padding: 16px;
-      border-radius: 12px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.02);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-
-    .metric-left {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .icon-box {
-      width: 42px;
-      height: 42px;
-      border-radius: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 18px;
-    }
-
-    .icon-lpg { background: #eff6ff; color: #2563eb; }
-    .icon-warning { background: #fefce8; color: #ca8a04; }
-    .icon-wifi { background: #f0fdf4; color: #16a34a; }
-    .icon-time { background: #f3e8ff; color: #9333ea; }
-
-    .metric-info label {
-      font-size: 10px;
-      font-weight: 700;
-      color: #94a3b8;
-      letter-spacing: 0.5px;
-      display: block;
-    }
-
-    .metric-info .value {
-      font-size: 16px;
-      font-weight: 700;
-      color: #0f172a;
-      margin-top: 2px;
-    }
-
-    .status-tag {
-      font-size: 11px;
-      font-weight: 600;
-      padding: 2px 8px;
-      border-radius: 6px;
-      display: flex;
-      align-items: center;
-      gap: 4px;
-    }
-
-    .tag-green { background: #f0fdf4; color: #16a34a; }
-    .tag-blue { background: #eff6ff; color: #2563eb; }
-
-    .controls-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 16px;
-      margin-bottom: 16px;
-    }
-
-    .control-card {
-      background: #ffffff;
-      padding: 16px 20px;
-      border-radius: 12px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.02);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      cursor: pointer;
-    }
-
-    .control-left {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      font-size: 13px;
-      font-weight: 700;
-      color: #334155;
-    }
-
-    .icon-control {
-      width: 36px;
-      height: 36px;
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .icon-led { background: #fffbeeb; color: #d97706; }
-    .icon-buzzer { background: #fef2f2; color: #dc2626; }
-    .icon-bell { background: #eff6ff; color: #2563eb; }
-
-    .bottom-grid {
-      display: grid;
-      grid-template-columns: 2fr 1fr;
-      gap: 16px;
-    }
-
-    .chart-card, .info-list-card {
-      background: #ffffff;
-      padding: 20px;
-      border-radius: 12px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.02);
-    }
-
-    .card-header-flex {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 16px;
-    }
-
-    .card-header-flex h3 {
-      font-size: 13px;
-      font-weight: 700;
-      color: #334155;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .time-select {
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
-      padding: 4px 10px;
-      border-radius: 6px;
-      font-size: 11px;
-      color: #475569;
-    }
-
-    .info-item {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 12px 0;
-      border-bottom: 1px solid #f1f5f9;
-    }
-
-    .info-item:last-child {
-      border-bottom: none;
-    }
-
-    .info-item-left {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .info-item-left .icon {
-      color: #3b82f6;
-      width: 24px;
-    }
-
-    .info-item-left label {
-      font-size: 10px;
-      font-weight: 700;
-      color: #94a3b8;
-      display: block;
-    }
-
-    .info-item-left .val {
-      font-size: 13px;
-      font-weight: 700;
-      color: #1e293b;
-    }
-
-    .footer {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-top: 24px;
-      font-size: 11px;
-      color: #94a3b8;
-    }
-
-    @media (max-width: 900px) {
-      .metrics-grid, .controls-grid, .bottom-grid {
-        grid-template-columns: 1fr;
-      }
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SORA Console - Monitoring LPG</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.10.1/mqtt.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{--bg:#f3f5f7;--card:#fff;--ink:#14202b;--sub:#64748b;--line:#e2e8f0;--ok:#15803d;--warn:#b45309;--bad:#b91c1c;--accent:#0f6b8f}
+@media(prefers-color-scheme:dark){:root{--bg:#0e151c;--card:#16212b;--ink:#e6edf3;--sub:#8fa1b3;--line:#263544;--ok:#4ade80;--warn:#fbbf24;--bad:#f87171;--accent:#38bdf8}}
+*{box-sizing:border-box;margin:0}
+body{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;padding:20px;line-height:1.4}
+.wrap{max-width:1100px;margin:0 auto;display:grid;gap:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px}
+header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+h1{font-size:19px}
+.sub{color:var(--sub);font-size:13px}
+.pill{font-size:12px;font-weight:600;padding:4px 12px;border-radius:99px;border:1px solid currentColor}
+.status{display:flex;justify-content:space-between;align-items:center;border-left:6px solid var(--ok)}
+.status.warn{border-color:var(--warn)}.status.bad{border-color:var(--bad)}
+.status b{font-size:30px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}
+.val{font-size:34px;font-weight:700;margin-top:4px}
+.val small{font-size:14px;font-weight:400;color:var(--sub)}
+.ctl{display:flex;justify-content:space-between;align-items:center}
+button{font:inherit;font-weight:600;border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:8px 18px;border-radius:8px;cursor:pointer}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.row{display:flex;gap:8px;align-items:center;margin-top:8px}
+.mode{display:flex;gap:8px;align-items:center;font-size:13px}
+</style>
 </head>
 <body>
+<div class="wrap">
+  <header>
+    <div><h1>SORA Console</h1><div class="sub">Monitoring LPG &middot; ESP32 &rarr; MQTT &rarr; Node-RED &rarr; Database</div></div>
+    <span class="pill" id="conn" style="color:var(--sub)">Menghubungkan...</span>
+  </header>
 
-  <!-- MODAL LOGIN -->
-  <div class="login-overlay" id="loginModal">
-    <div class="login-box">
-      <div class="logo-icon"><i class="fa-solid fa-shield-halved"></i></div>
-      <h2>SORA CONSOLE</h2>
-      <p>Masukan email & kata sandi terdaftar</p>
+  <div class="card status" id="statusCard">
+    <div><div class="sub">Status ruangan</div><b id="statusText">-</b></div>
+    <div class="sub" id="last">Belum ada data</div>
+  </div>
 
-      <form id="loginForm" onsubmit="event.preventDefault(); handleLogin();">
-        <div class="input-group">
-          <label>EMAIL ADMIN</label>
-          <input type="email" id="loginEmail" placeholder="admin@sora-monitoring.id" required>
-        </div>
-        <div class="input-group">
-          <label>KATA SANDI</label>
-          <input type="password" id="loginPassword" placeholder="••••••••" required>
-        </div>
-        <button type="submit" class="btn-submit" id="btnSubmitLogin">Masuk ke System</button>
-        <div class="error-msg" id="authError"></div>
-      </form>
+  <div class="grid">
+    <div class="card"><div class="sub">Sensor 1: Gas LPG (MQ-2)</div><div class="val"><span id="ppm">-</span> <small>ppm</small></div></div>
+    <div class="card"><div class="sub">Sensor 2: Suhu (DHT22)</div><div class="val"><span id="suhu">-</span> <small>&deg;C</small></div></div>
+    <div class="card">
+      <div class="ctl"><div><div class="sub">Aktuator 1</div><b>Buzzer</b></div><button id="btn-buzzer" aria-pressed="false">Mati</button></div>
+    </div>
+    <div class="card">
+      <div class="ctl"><div><div class="sub">Aktuator 2</div><b>Kipas (relay)</b></div><button id="btn-kipas" aria-pressed="false">Mati</button></div>
     </div>
   </div>
 
-  <!-- CONTAINER KONTEN DASBOR -->
-  <div class="container">
-    <div class="navbar">
-      <div class="logo-area">
-        <div class="logo-icon"><i class="fa-solid fa-shield-halved"></i></div>
-        <div class="logo-text">
-          <h1>SORA CONSOLE</h1>
-        </div>
-      </div>
-      <div class="nav-center">
-        <span id="userEmailNav">memuat...</span><br>
-        <span>Sistem Monitoring LPG IoT v2.0</span>
-      </div>
-      <div class="nav-actions">
-        <button class="btn-logout" onclick="handleLogout()"><i class="fa-solid fa-right-from-bracket"></i> Keluar</button>
-        <button class="btn-reload" onclick="location.reload()"><i class="fa-solid fa-rotate-right"></i></button>
-        <div class="badge-terhubung" id="mqttStatusBadge">
-          <i class="fa-solid fa-wifi"></i> <span id="statusText">TERHUBUNG</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="header-card">
-      <div class="node-info">
-        <h2>Dapur Utama <span class="badge-sub">TERHUBUNG</span></h2>
-        <div class="node-id">ID : LPG_NODE_01</div>
-      </div>
-      <div class="overall-status">
-        <span>STATUS</span>
-        <div class="status-aman-text" id="overallStatusText">
-          <i class="fa-solid fa-location-dot"></i> AMAN
-        </div>
-      </div>
-    </div>
-
-    <div class="section-title"><i class="fa-solid fa-sliders"></i> MONITORING</div>
-    <div class="metrics-grid">
-      <div class="metric-card">
-        <div class="metric-left">
-          <div class="icon-box icon-lpg"><i class="fa-solid fa-fire-flame-simple"></i></div>
-          <div class="metric-info">
-            <label>KONSENTRASI LPG</label>
-            <div class="value"><span id="ppmVal">0</span> <span style="font-size:12px; font-weight:normal;">ppm</span></div>
-          </div>
-        </div>
-        <div class="status-tag tag-green" id="ppmTag">AMAN <i class="fa-solid fa-chevron-right"></i></div>
-      </div>
-
-      <div class="metric-card">
-        <div class="metric-left">
-          <div class="icon-box icon-warning"><i class="fa-solid fa-triangle-exclamation"></i></div>
-          <div class="metric-info">
-            <label>STATUS KEBOCORAN</label>
-            <div class="value" id="leakStatusVal">Tidak Terdeteksi</div>
-          </div>
-        </div>
-        <div class="status-tag tag-green" id="leakTag">AMAN <i class="fa-solid fa-chevron-right"></i></div>
-      </div>
-
-      <div class="metric-card">
-        <div class="metric-left">
-          <div class="icon-box icon-wifi"><i class="fa-solid fa-wifi"></i></div>
-          <div class="metric-info">
-            <label>KONEKSI PERANGKAT</label>
-            <div class="value" id="deviceConnVal">Online</div>
-          </div>
-        </div>
-        <div class="status-tag tag-green">AKTIF <i class="fa-solid fa-chevron-right"></i></div>
-      </div>
-
-      <div class="metric-card">
-        <div class="metric-left">
-          <div class="icon-box icon-time"><i class="fa-regular fa-clock"></i></div>
-          <div class="metric-info">
-            <label>PEMBACAAN TERAKHIR</label>
-            <div class="value" id="lastDateVal" style="font-size:13px;">-</div>
-            <div style="font-size:10px; color:#94a3b8;" id="lastTimeVal">-</div>
-          </div>
-        </div>
-        <div class="status-tag tag-blue">TERBARU <i class="fa-solid fa-chevron-right"></i></div>
-      </div>
-    </div>
-
-    <div class="section-title"><i class="fa-solid fa-sliders"></i> KONTROL DAN PERINGATAN</div>
-    <div class="controls-grid">
-      <div class="control-card">
-        <div class="control-left">
-          <div class="icon-control icon-led"><i class="fa-regular fa-lightbulb"></i></div>
-          LED INDIKATOR
-        </div>
-        <i class="fa-solid fa-chevron-right" style="color:#cbd5e1;"></i>
-      </div>
-
-      <div class="control-card">
-        <div class="control-left">
-          <div class="icon-control icon-buzzer"><i class="fa-solid fa-volume-high"></i></div>
-          BUZZER ALARM
-        </div>
-        <i class="fa-solid fa-chevron-right" style="color:#cbd5e1;"></i>
-      </div>
-
-      <div class="control-card">
-        <div class="control-left">
-          <div class="icon-control icon-bell"><i class="fa-regular fa-bell"></i></div>
-          NOTIFIKASI SISTEM
-        </div>
-        <i class="fa-solid fa-chevron-right" style="color:#cbd5e1;"></i>
-      </div>
-    </div>
-
-    <div class="bottom-grid">
-      <div class="chart-card">
-        <div class="card-header-flex">
-          <h3><i class="fa-solid fa-chart-line" style="color:#2563eb;"></i> GRAFIK KONSENTRASI LPG</h3>
-          <select class="time-select">
-            <option>24 Jam Terakhir</option>
-          </select>
-        </div>
-        <canvas id="soraChart" height="150"></canvas>
-      </div>
-
-      <div class="info-list-card">
-        <div class="info-item">
-          <div class="info-item-left">
-            <i class="fa-solid fa-location-dot icon"></i>
-            <div>
-              <label>LOKASI</label>
-              <div class="val">Bandar Lampung</div>
-            </div>
-          </div>
-          <i class="fa-solid fa-chevron-right" style="color:#cbd5e1;"></i>
-        </div>
-
-        <div class="info-item">
-          <div class="info-item-left">
-            <i class="fa-solid fa-house icon"></i>
-            <div>
-              <label>KATEGORI</label>
-              <div class="val">Rumah Tangga</div>
-            </div>
-          </div>
-          <i class="fa-solid fa-chevron-right" style="color:#cbd5e1;"></i>
-        </div>
-
-        <div class="info-item">
-          <div class="info-item-left">
-            <i class="fa-solid fa-grip icon"></i>
-            <div>
-              <label>STATUS KOTA</label>
-              <div class="val">Node Aktif</div>
-            </div>
-          </div>
-          <i class="fa-solid fa-chevron-right" style="color:#cbd5e1;"></i>
-        </div>
-      </div>
-    </div>
-
-    <div class="footer">
-      <div><i class="fa-regular fa-copyright"></i> SORA © 2026 — Smart LPG Safety Monitoring</div>
-      <div id="updatedAgo"><i class="fa-regular fa-clock"></i> diperbarui baru saja</div>
-    </div>
+  <div class="card">
+    <div class="sub" style="margin-bottom:8px">Grafik gas LPG dan suhu (data terbaru)</div>
+    <canvas id="chart" height="110"></canvas>
   </div>
+  <div class="sub">Topik MQTT: <code id="topicInfo"></code></div>
+</div>
 
-  <script>
-    // ==========================================
-    // 1. INISIALISASI FIREBASE AUTHENTICATION
-    // ==========================================
-    const firebaseConfig = {
-      apiKey: "AIzaSyCVOPckXVt7tJ4WLdO0j-fbrNnuprSzdtg",
-      authDomain: "recognition-face-3546f.firebaseapp.com",
-      databaseURL: "https://recognition-face-3546f-default-rtdb.asia-southeast1.firebasedatabase.app",
-      projectId: "recognition-face-3546f",
-      storageBucket: "recognition-face-3546f.firebasestorage.app",
-      messagingSenderId: "346852831790",
-      appId: "1:346852831790:web:6e29a844136bc7d8faa5bf",
-      measurementId: "G-R0Z35L694R"
-    };
+<script>
+// ===== KONFIGURASI (sesuaikan) =====
+const BROKER   = 'wss://broker.hivemq.com:8884/mqtt'; // atau ws://IP-BROKER:9001 untuk Mosquitto lokal
+const NODE_ID  = 'sora/lpg01';
+const NODERED  = 'http://localhost:1880';              // untuk ambil riwayat dari database
+const BATAS_WASPADA = 1000, BATAS_BAHAYA = 2500;       // ppm
+const MAX_TITIK = 30;
 
-    firebase.initializeApp(firebaseConfig);
-    const auth = firebase.auth();
+const T = { sensor: NODE_ID+'/sensor', aktuator: NODE_ID+'/aktuator',
+            buzzer: NODE_ID+'/kontrol/buzzer', kipas: NODE_ID+'/kontrol/kipas' };
+document.getElementById('topicInfo').textContent = NODE_ID+'/#';
 
-    // ==========================================
-    // 2. KONFIGURASI MQTT & CHART
-    // ==========================================
-    const broker = 'wss://broker.hivemq.com:8884/mqtt';
-    const topic = 'esp32s3/sensor/gas';
-    let client = null;
+const $ = id => document.getElementById(id);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
-    const ctx = document.getElementById('soraChart').getContext('2d');
-    const soraChart = new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels: [],
-        datasets: [{
-          label: 'Konsentrasi (ppm)',
-          data: [],
-          borderColor: '#16a34a',
-          backgroundColor: 'rgba(22, 163, 74, 0.1)',
-          fill: true,
-          tension: 0.4,
-          pointBackgroundColor: '#16a34a',
-          pointRadius: 4
-        }]
-      },
-      options: {
-        responsive: true,
-        plugins: { legend: { display: false } },
-        scales: {
-          y: {
-            min: 0,
-            max: 3000,
-            ticks: { stepSize: 500 }
-          }
-        }
-      }
-    });
+// ===== GRAFIK =====
+const chart = new Chart($('chart'), {
+  type:'line',
+  data:{labels:[],datasets:[
+    {label:'Gas (ppm)',data:[],borderColor:css('--accent'),tension:.3,yAxisID:'y'},
+    {label:'Suhu (°C)',data:[],borderColor:css('--warn'),tension:.3,yAxisID:'y1'}]},
+  options:{responsive:true,scales:{
+    y:{min:0,suggestedMax:3000,title:{display:true,text:'ppm'}},
+    y1:{position:'right',min:0,max:60,grid:{drawOnChartArea:false},title:{display:true,text:'°C'}}}}
+});
+function tambahTitik(label, ppm, suhu){
+  const d = chart.data;
+  if(d.labels.length >= MAX_TITIK){ d.labels.shift(); d.datasets.forEach(s=>s.data.shift()); }
+  d.labels.push(label); d.datasets[0].data.push(ppm); d.datasets[1].data.push(suhu);
+  chart.update();
+}
 
-    // ==========================================
-    // 3. LOGIKA AUTENTIKASI (LOGIN/LOGOUT)
-    // ==========================================
-    auth.onAuthStateChanged((user) => {
-      const loginModal = document.getElementById('loginModal');
-      const userEmailNav = document.getElementById('userEmailNav');
+// ===== RIWAYAT DARI DATABASE (via Node-RED) =====
+// Node-RED harus punya endpoint GET /api/riwayat yang mengembalikan [{waktu, ppm, suhu}, ...]
+fetch(NODERED+'/api/riwayat?limit='+MAX_TITIK).then(r=>r.json()).then(rows=>{
+  rows.reverse().forEach(r=>tambahTitik(new Date(r.waktu).toLocaleTimeString('id-ID'), r.ppm, r.suhu));
+}).catch(()=>console.warn('Riwayat database belum tersedia'));
 
-      if (user) {
-        // Pengguna berhasil login
-        loginModal.style.display = 'none';
-        userEmailNav.innerText = user.email;
+// ===== STATUS =====
+function setStatus(ppm){
+  const card = $('statusCard'); card.className = 'card status';
+  let t = 'AMAN', c = 'var(--ok)';
+  if(ppm >= BATAS_BAHAYA){ t='BAHAYA'; card.classList.add('bad'); c='var(--bad)'; }
+  else if(ppm >= BATAS_WASPADA){ t='WASPADA'; card.classList.add('warn'); c='var(--warn)'; }
+  $('statusText').textContent = t; $('statusText').style.color = c;
+}
 
-        // Hubungkan ke MQTT jika belum terhubung
-        if (!client) {
-          initMqttConnection();
-        }
-      } else {
-        // Pengguna belum/sudah logout
-        loginModal.style.display = 'flex';
-        userEmailNav.innerText = 'Tidak Terautentikasi';
+// ===== TOMBOL AKTUATOR =====
+function tampilAktuator(nama, on){
+  const b = $('btn-'+nama);
+  b.classList.toggle('on', !!on); b.textContent = on ? 'Nyala' : 'Mati';
+  b.setAttribute('aria-pressed', !!on);
+}
+['buzzer','kipas'].forEach(n=>{
+  $('btn-'+n).onclick = () => {
+    const next = $('btn-'+n).classList.contains('on') ? '0' : '1';
+    client.publish(T[n], next, {qos:1});
+  };
+});
 
-        // Putuskan koneksi MQTT
-        if (client) {
-          client.end();
-          client = null;
-        }
-      }
-    });
-
-    function handleLogin() {
-      const email = document.getElementById('loginEmail').value;
-      const password = document.getElementById('loginPassword').value;
-      const errorEl = document.getElementById('authError');
-      const btnSubmit = document.getElementById('btnSubmitLogin');
-
-      errorEl.style.display = 'none';
-      btnSubmit.innerText = 'Memproses...';
-
-      auth.signInWithEmailAndPassword(email, password)
-        .then(() => {
-          btnSubmit.innerText = 'Masuk ke System';
-        })
-        .catch((error) => {
-          btnSubmit.innerText = 'Masuk ke System';
-          errorEl.style.display = 'block';
-          if (error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
-            errorEl.innerText = 'Email atau kata sandi salah.';
-          } else {
-            errorEl.innerText = error.message;
-          }
-        });
-    }
-
-    function handleLogout() {
-      auth.signOut().then(() => {
-        location.reload();
-      });
-    }
-
-    // ==========================================
-    // 4. KONEKSI MQTT CLIENT
-    // ==========================================
-    function initMqttConnection() {
-      client = mqtt.connect(broker);
-
-      client.on('connect', () => {
-        document.getElementById('mqttStatusBadge').style.background = '#dcfce7';
-        document.getElementById('mqttStatusBadge').style.color = '#166534';
-        document.getElementById('statusText').innerText = 'TERHUBUNG';
-        client.subscribe(topic);
-      });
-
-      client.on('offline', () => {
-        document.getElementById('mqttStatusBadge').style.background = '#fee2e2';
-        document.getElementById('mqttStatusBadge').style.color = '#991b1b';
-        document.getElementById('statusText').innerText = 'TERPUTUS';
-      });
-
-      client.on('message', (t, message) => {
-        try {
-          const data = JSON.parse(message.toString());
-          const ppm = Math.round(data.ppm || 0);
-
-          document.getElementById('ppmVal').innerText = ppm;
-
-          const now = new Date();
-          const optionsDate = { day: 'numeric', month: 'long', year: 'numeric' };
-          document.getElementById('lastDateVal').innerText = now.toLocaleDateString('id-ID', optionsDate);
-          document.getElementById('lastTimeVal').innerText = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
-
-          const ppmTag = document.getElementById('ppmTag');
-          const leakTag = document.getElementById('leakTag');
-          const leakVal = document.getElementById('leakStatusVal');
-          const overall = document.getElementById('overallStatusText');
-
-          if (ppm < 1000) {
-            ppmTag.className = 'status-tag tag-green';
-            ppmTag.innerHTML = 'AMAN <i class="fa-solid fa-chevron-right"></i>';
-            leakTag.className = 'status-tag tag-green';
-            leakTag.innerHTML = 'AMAN <i class="fa-solid fa-chevron-right"></i>';
-            leakVal.innerText = 'Tidak Terdeteksi';
-            overall.style.color = '#16a34a';
-            overall.innerHTML = '<i class="fa-solid fa-location-dot"></i> AMAN';
-          } else if (ppm >= 1000 && ppm < 2500) {
-            ppmTag.className = 'status-tag';
-            ppmTag.style.background = '#fefce8';
-            ppmTag.style.color = '#ca8a04';
-            ppmTag.innerHTML = 'WASPADA <i class="fa-solid fa-chevron-right"></i>';
-            leakVal.innerText = 'Terdeteksi Ringan';
-            overall.style.color = '#ca8a04';
-            overall.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> WASPADA';
-          } else {
-            ppmTag.className = 'status-tag';
-            ppmTag.style.background = '#fee2e2';
-            ppmTag.style.color = '#dc2626';
-            ppmTag.innerHTML = 'BAHAYA <i class="fa-solid fa-chevron-right"></i>';
-            leakVal.innerText = 'KEBOCORAN BAHAYA!';
-            overall.style.color = '#dc2626';
-            overall.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> BAHAYA';
-          }
-
-          const timeStr = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-          if (soraChart.data.labels.length > 9) {
-            soraChart.data.labels.shift();
-            soraChart.data.datasets[0].data.shift();
-          }
-          soraChart.data.labels.push(timeStr);
-          soraChart.data.datasets[0].data.push(ppm);
-          soraChart.update();
-
-        } catch (e) {
-          console.error("Data bukan format JSON valid", e);
-        }
-      });
-    }
-  </script>
+// ===== MQTT =====
+const client = mqtt.connect(BROKER, {reconnectPeriod:3000});
+client.on('connect', ()=>{
+  $('conn').textContent='Terhubung'; $('conn').style.color='var(--ok)';
+  client.subscribe([T.sensor, T.aktuator]);
+});
+client.on('offline', ()=>{ $('conn').textContent='Terputus'; $('conn').style.color='var(--bad)'; });
+client.on('message', (topic, msg)=>{
+  let d; try{ d = JSON.parse(msg.toString()); }catch(e){ return console.error('JSON tidak valid', e); }
+  if(topic === T.sensor){
+    const ppm = Math.round(d.ppm ?? 0), suhu = Number(d.suhu ?? d.temp ?? 0);
+    $('ppm').textContent = ppm; $('suhu').textContent = suhu.toFixed(1);
+    $('last').textContent = 'Terakhir: ' + new Date().toLocaleTimeString('id-ID');
+    setStatus(ppm); tambahTitik(new Date().toLocaleTimeString('id-ID'), ppm, suhu);
+  } else if(topic === T.aktuator){
+    tampilAktuator('buzzer', d.buzzer); tampilAktuator('kipas', d.kipas);
+  }
+});
+</script>
 </body>
 </html>
