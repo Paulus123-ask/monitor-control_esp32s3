@@ -1,144 +1,1386 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="id" class="dark">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SORA Console - Monitoring LPG</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.10.1/mqtt.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<style>
-:root{--bg:#f3f5f7;--card:#fff;--ink:#14202b;--sub:#64748b;--line:#e2e8f0;--ok:#15803d;--warn:#b45309;--bad:#b91c1c;--accent:#0f6b8f}
-@media(prefers-color-scheme:dark){:root{--bg:#0e151c;--card:#16212b;--ink:#e6edf3;--sub:#8fa1b3;--line:#263544;--ok:#4ade80;--warn:#fbbf24;--bad:#f87171;--accent:#38bdf8}}
-*{box-sizing:border-box;margin:0}
-body{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;padding:20px;line-height:1.4}
-.wrap{max-width:1100px;margin:0 auto;display:grid;gap:16px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px}
-header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
-h1{font-size:19px}
-.sub{color:var(--sub);font-size:13px}
-.pill{font-size:12px;font-weight:600;padding:4px 12px;border-radius:99px;border:1px solid currentColor}
-.status{display:flex;justify-content:space-between;align-items:center;border-left:6px solid var(--ok)}
-.status.warn{border-color:var(--warn)}.status.bad{border-color:var(--bad)}
-.status b{font-size:30px}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}
-.val{font-size:34px;font-weight:700;margin-top:4px}
-.val small{font-size:14px;font-weight:400;color:var(--sub)}
-.ctl{display:flex;justify-content:space-between;align-items:center}
-button{font:inherit;font-weight:600;border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:8px 18px;border-radius:8px;cursor:pointer}
-button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
-.row{display:flex;gap:8px;align-items:center;margin-top:8px}
-.mode{display:flex;gap:8px;align-items:center;font-size:13px}
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SORA Console — IoT LPG & Safety Command Center</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- MQTT.js & Chart.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.10.1/mqtt.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          animation: {
+            'pulse-fast': 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            'spin-slow': 'spin 4s linear infinite',
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* Custom scrollbar untuk terminal log & panel */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.3);
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(148, 163, 184, 0.5);
+    }
+
+    @keyframes radar-ping {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      70% { transform: scale(1.6); opacity: 0; }
+      100% { transform: scale(1.6); opacity: 0; }
+    }
+    .radar-ring {
+      animation: radar-ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+    }
+  </style>
 </head>
-<body>
-<div class="wrap">
-  <header>
-    <div><h1>SORA Console</h1><div class="sub">Monitoring LPG &middot; ESP32 &rarr; MQTT &rarr; Node-RED &rarr; Database</div></div>
-    <span class="pill" id="conn" style="color:var(--sub)">Menghubungkan...</span>
+<body class="bg-slate-100 text-slate-900 dark:bg-[#090e17] dark:text-slate-100 font-sans antialiased transition-colors duration-200 min-h-screen flex flex-col">
+
+  <!-- ===================================================================== -->
+  <!-- TOAST NOTIFICATION CONTAINER (Pengganti alert/confirm)                 -->
+  <!-- ===================================================================== -->
+  <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none px-4 sm:px-0"></div>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL AUTENTIKASI TOKEN & KONFIGURASI KONEKSI                         -->
+  <!-- ===================================================================== -->
+  <div id="auth-modal" class="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 overflow-y-auto">
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl max-w-xl w-full overflow-hidden my-auto">
+      <!-- Header Modal -->
+      <div class="bg-gradient-to-r from-sky-600 to-cyan-600 p-6 text-white relative">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="p-2.5 bg-white/15 rounded-xl backdrop-blur-sm">
+              <i data-lucide="shield-check" class="w-7 h-7 text-white"></i>
+            </div>
+            <div>
+              <h2 class="text-xl font-bold tracking-tight">SORA Console Access</h2>
+              <p class="text-sky-100 text-xs mt-0.5">Autentikasi Token & Konfigurasi Broker IoT</p>
+            </div>
+          </div>
+          <button id="btn-close-modal" type="button" class="hidden p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition" title="Tutup Pengaturan">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Form Konfigurasi -->
+      <form id="auth-form" class="p-6 space-y-5">
+        <!-- Token Section -->
+        <div class="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 rounded-xl p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <label for="input-token" class="text-xs font-bold uppercase tracking-wider text-sky-600 dark:text-sky-400 flex items-center gap-1.5">
+              <i data-lucide="key-round" class="w-4 h-4"></i> Access Token / API Key (Wajib)
+            </label>
+            <button type="button" id="btn-fill-demo-token" class="text-xs font-medium text-sky-600 dark:text-sky-400 hover:underline flex items-center gap-1">
+              <i data-lucide="sparkles" class="w-3.5 h-3.5"></i> Pakai Token Demo
+            </button>
+          </div>
+          <div class="relative">
+            <input type="password" id="input-token" required placeholder="Masukkan token akses (cth: SORA-2026-KEY)"
+              class="w-full pl-3.5 pr-10 py-2.5 text-sm font-mono bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition" />
+            <button type="button" id="btn-toggle-token-vis" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+              <i data-lucide="eye" class="w-4 h-4"></i>
+            </button>
+          </div>
+          <p class="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+            Token dikirim sebagai header <code class="px-1 py-0.5 bg-slate-200 dark:bg-slate-800 rounded">Authorization: Bearer &lt;token&gt;</code> ke Node-RED API dan validasi sesi perangkat.
+          </p>
+        </div>
+
+        <!-- Pengaturan Broker & Node -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div class="sm:col-span-2">
+            <label for="input-broker" class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">MQTT Broker WebSocket URL</label>
+            <input type="text" id="input-broker" value="wss://broker.hivemq.com:8884/mqtt" required
+              class="w-full px-3.5 py-2 text-sm font-mono bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-sky-500 outline-none" />
+          </div>
+
+          <div>
+            <label for="input-nodeid" class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Node ID / Root Topic</label>
+            <input type="text" id="input-nodeid" value="sora/lpg01" required
+              class="w-full px-3.5 py-2 text-sm font-mono bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-sky-500 outline-none" />
+          </div>
+
+          <div>
+            <label for="input-nodered" class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Node-RED API Endpoint</label>
+            <input type="text" id="input-nodered" value="http://localhost:1880"
+              class="w-full px-3.5 py-2 text-sm font-mono bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-sky-500 outline-none" />
+          </div>
+
+          <div>
+            <label for="input-mqtt-user" class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">MQTT Username <span class="text-slate-400 font-normal">(Opsional)</span></label>
+            <input type="text" id="input-mqtt-user" placeholder="Kosongkan jika publik"
+              class="w-full px-3.5 py-2 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-sky-500 outline-none" />
+          </div>
+
+          <div>
+            <label for="input-mqtt-pass" class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">MQTT Password <span class="text-slate-400 font-normal">(Opsional)</span></label>
+            <input type="password" id="input-mqtt-pass" placeholder="••••••••"
+              class="w-full px-3.5 py-2 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-sky-500 outline-none" />
+          </div>
+        </div>
+
+        <!-- Opsi Mode Simulasi -->
+        <div class="flex items-center justify-between p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20">
+          <div class="flex items-center gap-2.5">
+            <i data-lucide="cpu" class="w-5 h-5 text-amber-500 shrink-0"></i>
+            <div>
+              <div class="text-xs font-bold text-slate-800 dark:text-slate-200">Aktifkan Simulator ESP32 Virtual</div>
+              <div class="text-[11px] text-slate-500 dark:text-slate-400">Hasilkan telemetri gas & suhu otomatis jika hardware belum terpasang</div>
+            </div>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" id="input-sim-mode" class="sr-only peer">
+            <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+          </label>
+        </div>
+
+        <!-- Tombol Aksi Modal -->
+        <div class="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 border-t border-slate-200 dark:border-slate-800">
+          <button type="button" id="btn-reset-storage" class="w-full sm:w-auto px-4 py-2.5 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 rounded-xl transition flex items-center justify-center gap-1.5">
+            <i data-lucide="trash-2" class="w-4 h-4"></i> Reset Konfigurasi
+          </button>
+          <button type="submit" class="w-full sm:w-auto px-6 py-2.5 text-sm font-bold text-white bg-sky-600 hover:bg-sky-500 active:scale-[0.99] rounded-xl shadow-lg shadow-sky-600/25 transition flex items-center justify-center gap-2">
+            <i data-lucide="plug-zap" class="w-4 h-4"></i> Verifikasi & Hubungkan
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- TOP NAVIGATION BAR / COMMAND HEADER                                   -->
+  <!-- ===================================================================== -->
+  <header class="sticky top-0 z-30 bg-white/85 dark:bg-slate-900/85 backdrop-blur-md border-b border-slate-200 dark:border-slate-800">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+      <!-- Brand Logo -->
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-500 to-cyan-600 flex items-center justify-center text-white shadow-md shadow-sky-500/20">
+          <i data-lucide="flame" class="w-6 h-6"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-lg font-extrabold tracking-tight">SORA Console</h1>
+            <span class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-sky-500/15 text-sky-600 dark:text-sky-400 border border-sky-500/20">v2.4 Pro</span>
+          </div>
+          <p class="text-xs text-slate-500 dark:text-slate-400 hidden sm:block">ESP32 Telemetry &bull; MQTT Broker &bull; Node-RED Pipeline</p>
+        </div>
+      </div>
+
+      <!-- Status Indicators & Controls -->
+      <div class="flex flex-wrap items-center gap-2 sm:gap-3">
+        <!-- Jam & Uptime -->
+        <div class="hidden lg:flex flex-col items-end mr-2 text-right">
+          <span id="live-clock" class="text-xs font-mono font-bold text-slate-700 dark:text-slate-200">00:00:00</span>
+          <span id="session-uptime" class="text-[11px] font-mono text-slate-400">Uptime: 00:00</span>
+        </div>
+
+        <!-- Badge Status MQTT -->
+        <div id="badge-mqtt" class="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold bg-slate-200/70 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-300/60 dark:border-slate-700">
+          <span class="relative flex h-2.5 w-2.5">
+            <span id="mqtt-ping" class="hidden absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 radar-ring"></span>
+            <span id="mqtt-dot" class="relative inline-flex rounded-full h-2.5 w-2.5 bg-slate-400"></span>
+          </span>
+          <span id="mqtt-status-text">Terkunci</span>
+        </div>
+
+        <!-- Badge Status API / Token -->
+        <div id="badge-token" class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-mono font-medium bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20" title="Token Aktif">
+          <i data-lucide="key" class="w-3.5 h-3.5"></i>
+          <span id="token-preview">••••••</span>
+        </div>
+
+        <!-- Toggle Simulasi Cepat -->
+        <button id="btn-quick-sim" type="button" class="px-3 py-1.5 rounded-xl text-xs font-semibold border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 transition flex items-center gap-1.5" title="Aktifkan/Matikan Data Simulasi">
+          <i data-lucide="activity" class="w-3.5 h-3.5 text-amber-500"></i>
+          <span id="quick-sim-label">Simulasi: OFF</span>
+        </button>
+
+        <!-- Tombol Pengaturan Koneksi / Token -->
+        <button id="btn-open-settings" type="button" class="px-3 py-1.5 rounded-xl text-xs font-semibold bg-sky-600 hover:bg-sky-500 text-white shadow-sm transition flex items-center gap-1.5">
+          <i data-lucide="settings-2" class="w-3.5 h-3.5"></i>
+          <span class="hidden sm:inline">Koneksi & Token</span>
+        </button>
+
+        <!-- Tombol Kunci / Putus -->
+        <button id="btn-lock-session" type="button" class="p-2 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-rose-500/10 hover:text-rose-500 hover:border-rose-500/30 transition" title="Putus Koneksi & Kunci Sesi">
+          <i data-lucide="lock" class="w-4 h-4"></i>
+        </button>
+
+        <!-- Toggle Dark/Light Mode -->
+        <button id="btn-theme" type="button" class="p-2 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition" title="Ganti Tema Terang/Gelap">
+          <i data-lucide="sun" class="w-4 h-4 hidden dark:block text-amber-400"></i>
+          <i data-lucide="moon" class="w-4 h-4 block dark:hidden text-slate-700"></i>
+        </button>
+      </div>
+    </div>
   </header>
 
-  <div class="card status" id="statusCard">
-    <div><div class="sub">Status ruangan</div><b id="statusText">-</b></div>
-    <div class="sub" id="last">Belum ada data</div>
-  </div>
+  <!-- ===================================================================== -->
+  <!-- MAIN DASHBOARD CONTENT                                                -->
+  <!-- ===================================================================== -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
 
-  <div class="grid">
-    <div class="card"><div class="sub">Sensor 1: Gas LPG (MQ-2)</div><div class="val"><span id="ppm">-</span> <small>ppm</small></div></div>
-    <div class="card"><div class="sub">Sensor 2: Suhu (DHT22)</div><div class="val"><span id="suhu">-</span> <small>&deg;C</small></div></div>
-    <div class="card">
-      <div class="ctl"><div><div class="sub">Aktuator 1</div><b>Buzzer</b></div><button id="btn-buzzer" aria-pressed="false">Mati</button></div>
-    </div>
-    <div class="card">
-      <div class="ctl"><div><div class="sub">Aktuator 2</div><b>Kipas (relay)</b></div><button id="btn-kipas" aria-pressed="false">Mati</button></div>
-    </div>
-  </div>
+    <!-- 1. BANNER STATUS RUANGAN DINAMIS -->
+    <section id="status-banner" class="relative overflow-hidden rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm p-5 sm:p-6 transition-all duration-300 border-l-8 border-l-emerald-500">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div class="flex items-start sm:items-center gap-4">
+          <div id="status-icon-box" class="p-3.5 rounded-2xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 shrink-0">
+            <i id="status-icon" data-lucide="shield-check" class="w-8 h-8"></i>
+          </div>
+          <div>
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Status Keamanan Ruangan</span>
+              <span id="node-badge" class="px-2 py-0.5 text-[11px] font-mono rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">sora/lpg01</span>
+            </div>
+            <div class="flex items-baseline gap-3 mt-1">
+              <h2 id="status-title" class="text-2xl sm:text-3xl font-extrabold tracking-tight text-emerald-600 dark:text-emerald-400">MENUNGGU DATA</h2>
+              <span id="status-subtitle" class="text-xs sm:text-sm text-slate-500 dark:text-slate-400">Menunggu paket telemetri dari node sensor...</span>
+            </div>
+          </div>
+        </div>
 
-  <div class="card">
-    <div class="sub" style="margin-bottom:8px">Grafik gas LPG dan suhu (data terbaru)</div>
-    <canvas id="chart" height="110"></canvas>
-  </div>
-  <div class="sub">Topik MQTT: <code id="topicInfo"></code></div>
-</div>
+        <!-- Info Meta Update & Aksi Cepat -->
+        <div class="flex flex-wrap items-center gap-3 sm:justify-end border-t md:border-t-0 pt-3 md:pt-0 border-slate-100 dark:border-slate-800">
+          <div class="text-left md:text-right mr-2">
+            <div class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold">Pembaruan Terakhir</div>
+            <div id="last-update" class="text-sm font-mono font-bold text-slate-700 dark:text-slate-200">Belum ada paket</div>
+            <div id="packet-counter" class="text-[11px] text-slate-400 font-mono">Paket diterima: 0</div>
+          </div>
+          <button id="btn-test-alarm" type="button" class="px-3.5 py-2 rounded-xl text-xs font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 hover:bg-amber-500/25 border border-amber-500/30 transition flex items-center gap-1.5">
+            <i data-lucide="bell-ring" class="w-4 h-4"></i> Tes Alarm
+          </button>
+          <button id="btn-reset-alarm" type="button" class="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition flex items-center gap-1.5">
+            <i data-lucide="rotate-ccw" class="w-4 h-4"></i> Reset
+          </button>
+        </div>
+      </div>
+    </section>
 
-<script>
-// ===== KONFIGURASI (sesuaikan) =====
-const BROKER   = 'wss://broker.hivemq.com:8884/mqtt'; // atau ws://IP-BROKER:9001 untuk Mosquitto lokal
-const NODE_ID  = 'sora/lpg01';
-const NODERED  = 'http://localhost:1880';              // untuk ambil riwayat dari database
-const BATAS_WASPADA = 1000, BATAS_BAHAYA = 2500;       // ppm
-const MAX_TITIK = 30;
+    <!-- 2. KARTU METRIK UTAMA (4 KPI CARDS) -->
+    <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <!-- KPI 1: Gas LPG (MQ-2) -->
+      <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 shadow-sm flex flex-col justify-between">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Gas LPG (MQ-2)</span>
+          <div class="p-2 rounded-lg bg-sky-500/10 text-sky-500">
+            <i data-lucide="wind" class="w-4 h-4"></i>
+          </div>
+        </div>
+        <div class="my-3">
+          <div class="flex items-baseline gap-1.5">
+            <span id="val-ppm" class="text-3xl sm:text-4xl font-extrabold font-mono tracking-tight">--</span>
+            <span class="text-sm font-medium text-slate-400">ppm</span>
+          </div>
+          <!-- Progress bar terhadap batas bahaya -->
+          <div class="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mt-3">
+            <div id="bar-ppm" class="h-full bg-sky-500 rounded-full transition-all duration-300" style="width: 0%"></div>
+          </div>
+        </div>
+        <div class="flex items-center justify-between text-[11px] font-mono text-slate-500 dark:text-slate-400 pt-2 border-t border-slate-100 dark:border-slate-800/80">
+          <span>Min: <b id="min-ppm" class="text-slate-700 dark:text-slate-300">-</b></span>
+          <span>Avg: <b id="avg-ppm" class="text-slate-700 dark:text-slate-300">-</b></span>
+          <span>Max: <b id="max-ppm" class="text-slate-700 dark:text-slate-300">-</b></span>
+        </div>
+      </div>
 
-const T = { sensor: NODE_ID+'/sensor', aktuator: NODE_ID+'/aktuator',
-            buzzer: NODE_ID+'/kontrol/buzzer', kipas: NODE_ID+'/kontrol/kipas' };
-document.getElementById('topicInfo').textContent = NODE_ID+'/#';
+      <!-- KPI 2: Suhu Ruangan (DHT22) -->
+      <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 shadow-sm flex flex-col justify-between">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Suhu Ruangan</span>
+          <div class="p-2 rounded-lg bg-amber-500/10 text-amber-500">
+            <i data-lucide="thermometer" class="w-4 h-4"></i>
+          </div>
+        </div>
+        <div class="my-3">
+          <div class="flex items-baseline gap-1.5">
+            <span id="val-suhu" class="text-3xl sm:text-4xl font-extrabold font-mono tracking-tight">--.-</span>
+            <span class="text-sm font-medium text-slate-400">&deg;C</span>
+            <span id="tag-suhu" class="ml-auto px-2 py-0.5 text-[10px] font-bold rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500">Normal</span>
+          </div>
+          <div class="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mt-3">
+            <div id="bar-suhu" class="h-full bg-amber-500 rounded-full transition-all duration-300" style="width: 0%"></div>
+          </div>
+        </div>
+        <div class="flex items-center justify-between text-[11px] font-mono text-slate-500 dark:text-slate-400 pt-2 border-t border-slate-100 dark:border-slate-800/80">
+          <span>Min: <b id="min-suhu" class="text-slate-700 dark:text-slate-300">-</b>&deg;</span>
+          <span>Kelembapan: <b id="val-hum" class="text-slate-700 dark:text-slate-300">--</b>%</span>
+          <span>Max: <b id="max-suhu" class="text-slate-700 dark:text-slate-300">-</b>&deg;</span>
+        </div>
+      </div>
 
-const $ = id => document.getElementById(id);
-const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+      <!-- KPI 3: Indeks Risiko Kebocoran -->
+      <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 shadow-sm flex flex-col justify-between">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Indeks Risiko</span>
+          <div class="p-2 rounded-lg bg-purple-500/10 text-purple-500">
+            <i data-lucide="gauge" class="w-4 h-4"></i>
+          </div>
+        </div>
+        <div class="my-3">
+          <div class="flex items-baseline gap-1.5">
+            <span id="val-risk" class="text-3xl sm:text-4xl font-extrabold font-mono tracking-tight">0</span>
+            <span class="text-sm font-medium text-slate-400">%</span>
+            <span id="tag-risk" class="ml-auto px-2 py-0.5 text-[10px] font-bold rounded-full bg-emerald-500/15 text-emerald-500">Rendah</span>
+          </div>
+          <p class="text-xs text-slate-500 dark:text-slate-400 mt-2">Kalkulasi gabungan rasio PPM gas &amp; anomali suhu.</p>
+        </div>
+        <div class="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 pt-2 border-t border-slate-100 dark:border-slate-800/80">
+          <span>Batas Bahaya:</span>
+          <span id="lbl-danger-limit" class="font-mono font-bold text-rose-500">2500 ppm</span>
+        </div>
+      </div>
 
-// ===== GRAFIK =====
-const chart = new Chart($('chart'), {
-  type:'line',
-  data:{labels:[],datasets:[
-    {label:'Gas (ppm)',data:[],borderColor:css('--accent'),tension:.3,yAxisID:'y'},
-    {label:'Suhu (°C)',data:[],borderColor:css('--warn'),tension:.3,yAxisID:'y1'}]},
-  options:{responsive:true,scales:{
-    y:{min:0,suggestedMax:3000,title:{display:true,text:'ppm'}},
-    y1:{position:'right',min:0,max:60,grid:{drawOnChartArea:false},title:{display:true,text:'°C'}}}}
-});
-function tambahTitik(label, ppm, suhu){
-  const d = chart.data;
-  if(d.labels.length >= MAX_TITIK){ d.labels.shift(); d.datasets.forEach(s=>s.data.shift()); }
-  d.labels.push(label); d.datasets[0].data.push(ppm); d.datasets[1].data.push(suhu);
-  chart.update();
-}
+      <!-- KPI 4: Telemetri Perangkat & Node-RED -->
+      <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 shadow-sm flex flex-col justify-between">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Node &amp; Pipeline</span>
+          <div class="p-2 rounded-lg bg-emerald-500/10 text-emerald-500">
+            <i data-lucide="radio" class="w-4 h-4"></i>
+          </div>
+        </div>
+        <div class="my-3 space-y-2">
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-slate-500 dark:text-slate-400">Sinyal ESP32 (RSSI)</span>
+            <span id="val-rssi" class="font-mono font-bold text-slate-700 dark:text-slate-200">-62 dBm</span>
+          </div>
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-slate-500 dark:text-slate-400">Database Node-RED</span>
+            <span id="val-db-status" class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500">Standby</span>
+          </div>
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-slate-500 dark:text-slate-400">Mode Sumber</span>
+            <span id="val-source-mode" class="font-mono font-semibold text-sky-500">MQTT Live</span>
+          </div>
+        </div>
+        <div class="flex items-center justify-between text-[11px] font-mono text-slate-500 dark:text-slate-400 pt-2 border-t border-slate-100 dark:border-slate-800/80 truncate">
+          <span class="truncate" id="topic-preview">Topik: sora/lpg01/#</span>
+        </div>
+      </div>
+    </section>
 
-// ===== RIWAYAT DARI DATABASE (via Node-RED) =====
-// Node-RED harus punya endpoint GET /api/riwayat yang mengembalikan [{waktu, ppm, suhu}, ...]
-fetch(NODERED+'/api/riwayat?limit='+MAX_TITIK).then(r=>r.json()).then(rows=>{
-  rows.reverse().forEach(r=>tambahTitik(new Date(r.waktu).toLocaleTimeString('id-ID'), r.ppm, r.suhu));
-}).catch(()=>console.warn('Riwayat database belum tersedia'));
+    <!-- 3. GRAFIK REAL-TIME & PANEL KONTROL AKTUATOR -->
+    <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <!-- Kolom Kiri (2/3): Grafik Dual-Axis Chart.js -->
+      <div class="lg:col-span-2 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 shadow-sm flex flex-col">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div>
+            <h3 class="text-base font-bold flex items-center gap-2">
+              <i data-lucide="line-chart" class="w-5 h-5 text-sky-500"></i>
+              Grafik Telemetri Real-Time
+            </h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400">Pemantauan konsentrasi Gas LPG (ppm) dan Suhu (&deg;C)</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button id="btn-pause-chart" type="button" class="px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition flex items-center gap-1.5">
+              <i data-lucide="pause" class="w-3.5 h-3.5"></i> <span>Jeda</span>
+            </button>
+            <button id="btn-export-csv" type="button" class="px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition flex items-center gap-1.5" title="Unduh Data CSV">
+              <i data-lucide="download" class="w-3.5 h-3.5"></i> <span>CSV</span>
+            </button>
+            <button id="btn-clear-chart" type="button" class="px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 dark:border-slate-700 hover:bg-rose-500/10 hover:text-rose-500 transition flex items-center gap-1.5" title="Bersihkan Grafik">
+              <i data-lucide="eraser" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
+        </div>
 
-// ===== STATUS =====
-function setStatus(ppm){
-  const card = $('statusCard'); card.className = 'card status';
-  let t = 'AMAN', c = 'var(--ok)';
-  if(ppm >= BATAS_BAHAYA){ t='BAHAYA'; card.classList.add('bad'); c='var(--bad)'; }
-  else if(ppm >= BATAS_WASPADA){ t='WASPADA'; card.classList.add('warn'); c='var(--warn)'; }
-  $('statusText').textContent = t; $('statusText').style.color = c;
-}
+        <div class="relative flex-1 min-h-[270px] w-full">
+          <canvas id="telemetryChart"></canvas>
+        </div>
+      </div>
 
-// ===== TOMBOL AKTUATOR =====
-function tampilAktuator(nama, on){
-  const b = $('btn-'+nama);
-  b.classList.toggle('on', !!on); b.textContent = on ? 'Nyala' : 'Mati';
-  b.setAttribute('aria-pressed', !!on);
-}
-['buzzer','kipas'].forEach(n=>{
-  $('btn-'+n).onclick = () => {
-    const next = $('btn-'+n).classList.contains('on') ? '0' : '1';
-    client.publish(T[n], next, {qos:1});
-  };
-});
+      <!-- Kolom Kanan (1/3): Kontrol Aktuator & Auto-Safety -->
+      <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 shadow-sm flex flex-col justify-between space-y-5">
+        <div>
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-base font-bold flex items-center gap-2">
+              <i data-lucide="sliders" class="w-5 h-5 text-sky-500"></i>
+              Kontrol Aktuator
+            </h3>
+            <span class="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500">QoS 1</span>
+          </div>
 
-// ===== MQTT =====
-const client = mqtt.connect(BROKER, {reconnectPeriod:3000});
-client.on('connect', ()=>{
-  $('conn').textContent='Terhubung'; $('conn').style.color='var(--ok)';
-  client.subscribe([T.sensor, T.aktuator]);
-});
-client.on('offline', ()=>{ $('conn').textContent='Terputus'; $('conn').style.color='var(--bad)'; });
-client.on('message', (topic, msg)=>{
-  let d; try{ d = JSON.parse(msg.toString()); }catch(e){ return console.error('JSON tidak valid', e); }
-  if(topic === T.sensor){
-    const ppm = Math.round(d.ppm ?? 0), suhu = Number(d.suhu ?? d.temp ?? 0);
-    $('ppm').textContent = ppm; $('suhu').textContent = suhu.toFixed(1);
-    $('last').textContent = 'Terakhir: ' + new Date().toLocaleTimeString('id-ID');
-    setStatus(ppm); tambahTitik(new Date().toLocaleTimeString('id-ID'), ppm, suhu);
-  } else if(topic === T.aktuator){
-    tampilAktuator('buzzer', d.buzzer); tampilAktuator('kipas', d.kipas);
-  }
-});
-</script>
+          <div class="space-y-3">
+            <!-- Aktuator 1: Buzzer Alarm -->
+            <div id="card-buzzer" class="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 flex items-center justify-between transition">
+              <div class="flex items-center gap-3">
+                <div id="icon-buzzer" class="p-2.5 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-500 transition">
+                  <i data-lucide="volume-2" class="w-5 h-5"></i>
+                </div>
+                <div>
+                  <div class="text-sm font-bold">Buzzer Alarm</div>
+                  <div id="sub-buzzer" class="text-xs text-slate-500 dark:text-slate-400">Status: Mati (0)</div>
+                </div>
+              </div>
+              <button id="btn-buzzer" type="button" aria-pressed="false"
+                class="px-4 py-2 rounded-xl text-xs font-bold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:opacity-90 transition min-w-[84px]">
+                NYALAKAN
+              </button>
+            </div>
+
+            <!-- Aktuator 2: Kipas Exhaust (Relay) -->
+            <div id="card-kipas" class="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 flex items-center justify-between transition">
+              <div class="flex items-center gap-3">
+                <div id="icon-kipas" class="p-2.5 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-500 transition">
+                  <i id="svg-kipas" data-lucide="fan" class="w-5 h-5"></i>
+                </div>
+                <div>
+                  <div class="text-sm font-bold">Kipas Exhaust</div>
+                  <div id="sub-kipas" class="text-xs text-slate-500 dark:text-slate-400">Status: Mati (0)</div>
+                </div>
+              </div>
+              <button id="btn-kipas" type="button" aria-pressed="false"
+                class="px-4 py-2 rounded-xl text-xs font-bold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:opacity-90 transition min-w-[84px]">
+                NYALAKAN
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Otomasi & Pengaturan Ambang Batas (Threshold) -->
+        <div class="pt-4 border-t border-slate-200 dark:border-slate-800 space-y-3">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="text-xs font-bold flex items-center gap-1.5">
+                <i data-lucide="bot" class="w-4 h-4 text-emerald-500"></i> Auto-Safety Mitigasi
+              </div>
+              <p class="text-[11px] text-slate-500 dark:text-slate-400">Otomatis aktifkan kipas &amp; buzzer saat bahaya</p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" id="toggle-auto-safety" checked class="sr-only peer">
+              <div class="w-10 h-5 bg-slate-300 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+            </label>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2.5 pt-1">
+            <div class="bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-xl border border-slate-200/80 dark:border-slate-700/60">
+              <label for="input-warn-ppm" class="block text-[10px] font-bold uppercase text-amber-600 dark:text-amber-400 mb-1">Batas Waspada</label>
+              <div class="flex items-center gap-1">
+                <input type="number" id="input-warn-ppm" value="1000" min="100" max="9000" step="50"
+                  class="w-full bg-transparent text-sm font-mono font-bold outline-none" />
+                <span class="text-[10px] text-slate-400">ppm</span>
+              </div>
+            </div>
+            <div class="bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-xl border border-slate-200/80 dark:border-slate-700/60">
+              <label for="input-danger-ppm" class="block text-[10px] font-bold uppercase text-rose-600 dark:text-rose-400 mb-1">Batas Bahaya</label>
+              <div class="flex items-center gap-1">
+                <input type="number" id="input-danger-ppm" value="2500" min="200" max="10000" step="50"
+                  class="w-full bg-transparent text-sm font-mono font-bold outline-none" />
+                <span class="text-[10px] text-slate-400">ppm</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. TERMINAL LOG AKTIVITAS & RIWAYAT MQTT -->
+    <section class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 shadow-sm">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <div class="flex items-center gap-2">
+          <i data-lucide="terminal" class="w-5 h-5 text-sky-500"></i>
+          <h3 class="text-base font-bold">Live Event &amp; MQTT Console Log</h3>
+          <span id="log-count" class="px-2 py-0.5 text-[11px] font-mono rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500">0</span>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <select id="log-filter" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none">
+            <option value="ALL">Semua Log</option>
+            <option value="MQTT">Telemetri MQTT</option>
+            <option value="CMD">Perintah Aktuator</option>
+            <option value="ALERT">Peringatan / Bahaya</option>
+            <option value="SYS">Sistem &amp; Auth</option>
+          </select>
+          <button id="btn-clear-logs" type="button" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition">
+            Bersihkan
+          </button>
+        </div>
+      </div>
+
+      <div id="log-console" class="h-48 overflow-y-auto rounded-xl bg-slate-950 text-slate-300 font-mono text-xs p-3.5 space-y-1.5 border border-slate-800">
+        <!-- Log entries injected via JS -->
+      </div>
+    </section>
+  </main>
+
+  <!-- ===================================================================== -->
+  <!-- FOOTER                                                                -->
+  <!-- ===================================================================== -->
+  <footer class="border-t border-slate-200 dark:border-slate-800 py-4 px-4 sm:px-6 text-center text-xs text-slate-500 dark:text-slate-400">
+    SORA Console &mdash; Sistem Monitoring &amp; Mitigasi Kebocoran Gas LPG Real-Time &bull; Mendukung Autentikasi Bearer Token &amp; MQTT WebSockets
+  </footer>
+
+  <!-- ===================================================================== -->
+  <!-- JAVASCRIPT LOGIC                                                      -->
+  <!-- ===================================================================== -->
+  <script>
+    // Inisialisasi ikon Lucide
+    lucide.createIcons();
+
+    // ===== STATE & KONFIGURASI DEFAULT =====
+    const STORAGE_KEY = 'sora_console_config_v2';
+    const MAX_POINTS = 35;
+    const MAX_LOGS = 120;
+
+    let config = {
+      token: '',
+      broker: 'wss://broker.hivemq.com:8884/mqtt',
+      nodeId: 'sora/lpg01',
+      nodeRed: 'http://localhost:1880',
+      mqttUser: '',
+      mqttPass: '',
+      simMode: false,
+      warnPpm: 1000,
+      dangerPpm: 2500,
+      autoSafety: true
+    };
+
+    let state = {
+      authenticated: false,
+      mqttClient: null,
+      connected: false,
+      simTimer: null,
+      chartPaused: false,
+      packetCount: 0,
+      startTime: Date.now(),
+      buzzerOn: false,
+      kipasOn: false,
+      lastStatus: 'AMAN',
+      stats: {
+        ppmMin: Infinity,
+        ppmMax: -Infinity,
+        ppmSum: 0,
+        suhuMin: Infinity,
+        suhuMax: -Infinity
+      },
+      logs: []
+    };
+
+    const $ = id => document.getElementById(id);
+
+    // ===== TOAST NOTIFICATION (PENGGANTI ALERT) =====
+    function showToast(title, message, type = 'info') {
+      const container = $('toast-container');
+      const colors = {
+        success: 'border-emerald-500 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100',
+        warn: 'border-amber-500 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100',
+        danger: 'border-rose-500 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100',
+        info: 'border-sky-500 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100'
+      };
+      const iconNames = {
+        success: 'check-circle-2',
+        warn: 'alert-triangle',
+        danger: 'flame',
+        info: 'info'
+      };
+      const iconColors = {
+        success: 'text-emerald-500',
+        warn: 'text-amber-500',
+        danger: 'text-rose-500',
+        info: 'text-sky-500'
+      };
+
+      const toast = document.createElement('div');
+      toast.className = `pointer-events-auto flex items-start gap-3 p-3.5 rounded-xl border-l-4 shadow-xl border border-slate-200 dark:border-slate-800 transition-all duration-300 transform translate-y-2 opacity-0 ${colors[type]}`;
+      toast.innerHTML = `
+        <i data-lucide="${iconNames[type]}" class="w-5 h-5 shrink-0 mt-0.5 ${iconColors[type]}"></i>
+        <div class="flex-1 min-w-0">
+          <div class="text-xs font-bold">${title}</div>
+          <div class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 break-words">${message}</div>
+        </div>
+      `;
+      container.appendChild(toast);
+      lucide.createIcons({ nodes: [toast] });
+
+      requestAnimationFrame(() => {
+        toast.classList.remove('translate-y-2', 'opacity-0');
+      });
+
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-y-2');
+        setTimeout(() => toast.remove(), 300);
+      }, 4000);
+    }
+
+    // ===== TERMINAL LOGGING SYSTEM =====
+    function addLog(category, message) {
+      const time = new Date().toLocaleTimeString('id-ID', { hour12: false });
+      state.logs.unshift({ time, category, message });
+      if (state.logs.length > MAX_LOGS) state.logs.pop();
+      renderLogs();
+    }
+
+    function renderLogs() {
+      const filter = $('log-filter').value;
+      const consoleEl = $('log-console');
+      const filtered = filter === 'ALL' ? state.logs : state.logs.filter(l => l.category === filter);
+      $('log-count').textContent = filtered.length;
+
+      const badgeColors = {
+        MQTT: 'text-sky-400',
+        CMD: 'text-purple-400',
+        ALERT: 'text-rose-400 font-bold',
+        SYS: 'text-emerald-400'
+      };
+
+      consoleEl.innerHTML = filtered.map(item => `
+        <div class="flex items-start gap-2 leading-relaxed border-b border-slate-900/80 pb-1">
+          <span class="text-slate-500 shrink-0">[${item.time}]</span>
+          <span class="${badgeColors[item.category] || 'text-slate-400'} shrink-0 w-12">[${item.category}]</span>
+          <span class="text-slate-200 break-all">${item.message}</span>
+        </div>
+      `).join('');
+    }
+
+    // ===== CHART.JS INITIALIZATION =====
+    const ctx = $('telemetryChart').getContext('2d');
+    const gasGradient = ctx.createLinearGradient(0, 0, 0, 280);
+    gasGradient.addColorStop(0, 'rgba(14, 165, 233, 0.35)');
+    gasGradient.addColorStop(1, 'rgba(14, 165, 233, 0.0)');
+
+    const tempGradient = ctx.createLinearGradient(0, 0, 0, 280);
+    tempGradient.addColorStop(0, 'rgba(245, 158, 11, 0.25)');
+    tempGradient.addColorStop(1, 'rgba(245, 158, 11, 0.0)');
+
+    const telemetryChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [
+          {
+            label: 'Gas LPG (ppm)',
+            data: [],
+            borderColor: '#0ea5e9',
+            backgroundColor: gasGradient,
+            borderWidth: 2.5,
+            fill: true,
+            tension: 0.35,
+            pointRadius: 2.5,
+            pointHoverRadius: 5,
+            yAxisID: 'yGas'
+          },
+          {
+            label: 'Suhu (°C)',
+            data: [],
+            borderColor: '#f59e0b',
+            backgroundColor: tempGradient,
+            borderWidth: 2,
+            fill: true,
+            tension: 0.35,
+            pointRadius: 2,
+            pointHoverRadius: 5,
+            yAxisID: 'yTemp'
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: {
+            labels: {
+              color: '#94a3b8',
+              font: { family: 'Inter', size: 12, weight: '600' },
+              usePointStyle: true
+            }
+          },
+          tooltip: {
+            backgroundColor: 'rgba(15, 23, 42, 0.92)',
+            titleFont: { family: 'JetBrains Mono', size: 12 },
+            bodyFont: { family: 'JetBrains Mono', size: 12 },
+            padding: 10,
+            cornerRadius: 8
+          }
+        },
+        scales: {
+          x: {
+            ticks: { color: '#64748b', font: { family: 'JetBrains Mono', size: 10 }, maxRotation: 0 },
+            grid: { color: 'rgba(148, 163, 184, 0.08)' }
+          },
+          yGas: {
+            type: 'linear',
+            position: 'left',
+            min: 0,
+            suggestedMax: 3000,
+            title: { display: true, text: 'Gas (ppm)', color: '#0ea5e9', font: { size: 11, weight: 'bold' } },
+            ticks: { color: '#64748b', font: { family: 'JetBrains Mono', size: 11 } },
+            grid: { color: 'rgba(148, 163, 184, 0.1)' }
+          },
+          yTemp: {
+            type: 'linear',
+            position: 'right',
+            min: 0,
+            max: 65,
+            title: { display: true, text: 'Suhu (°C)', color: '#f59e0b', font: { size: 11, weight: 'bold' } },
+            ticks: { color: '#64748b', font: { family: 'JetBrains Mono', size: 11 } },
+            grid: { drawOnChartArea: false }
+          }
+        }
+      }
+    });
+
+    function pushChartData(label, ppm, suhu) {
+      if (state.chartPaused) return;
+      const d = telemetryChart.data;
+      if (d.labels.length >= MAX_POINTS) {
+        d.labels.shift();
+        d.datasets[0].data.shift();
+        d.datasets[1].data.shift();
+      }
+      d.labels.push(label);
+      d.datasets[0].data.push(ppm);
+      d.datasets[1].data.push(suhu);
+      telemetryChart.update('none');
+    }
+
+    // ===== UPDATE UI STATUS & TELEMETRI =====
+    function setConnectionBadge(statusText, mode) {
+      const dot = $('mqtt-dot');
+      const ping = $('mqtt-ping');
+      const label = $('mqtt-status-text');
+      label.textContent = statusText;
+
+      dot.className = 'relative inline-flex rounded-full h-2.5 w-2.5 ';
+      ping.classList.add('hidden');
+
+      if (mode === 'connected') {
+        dot.classList.add('bg-emerald-500');
+        ping.classList.remove('hidden');
+      } else if (mode === 'connecting') {
+        dot.classList.add('bg-amber-500');
+      } else if (mode === 'sim') {
+        dot.classList.add('bg-sky-500');
+        ping.classList.remove('hidden');
+      } else {
+        dot.classList.add('bg-rose-500');
+      }
+    }
+
+    function evaluateSafetyStatus(ppm, suhu) {
+      const banner = $('status-banner');
+      const iconBox = $('status-icon-box');
+      const title = $('status-title');
+      const subtitle = $('status-subtitle');
+
+      let currentStatus = 'AMAN';
+      if (ppm >= config.dangerPpm) {
+        currentStatus = 'BAHAYA';
+      } else if (ppm >= config.warnPpm) {
+        currentStatus = 'WASPADA';
+      }
+
+      // Reset classes
+      banner.className = 'relative overflow-hidden rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm p-5 sm:p-6 transition-all duration-300 border-l-8 ';
+
+      if (currentStatus === 'BAHAYA') {
+        banner.classList.add('border-l-rose-600', 'ring-2', 'ring-rose-500/40');
+        iconBox.className = 'p-3.5 rounded-2xl bg-rose-500/20 text-rose-500 animate-pulse-fast shrink-0';
+        iconBox.innerHTML = '<i data-lucide="flame" class="w-8 h-8"></i>';
+        title.className = 'text-2xl sm:text-3xl font-extrabold tracking-tight text-rose-500';
+        title.textContent = 'BAHAYA KEBOCORAN GAS!';
+        subtitle.textContent = `Konsentrasi LPG kritis (${ppm} ppm). Segera matikan sumber api & ventilasi ruangan!`;
+      } else if (currentStatus === 'WASPADA') {
+        banner.classList.add('border-l-amber-500');
+        iconBox.className = 'p-3.5 rounded-2xl bg-amber-500/20 text-amber-500 shrink-0';
+        iconBox.innerHTML = '<i data-lucide="alert-triangle" class="w-8 h-8"></i>';
+        title.className = 'text-2xl sm:text-3xl font-extrabold tracking-tight text-amber-500';
+        title.textContent = 'WASPADA GAS MENINGKAT';
+        subtitle.textContent = `Kadar gas (${ppm} ppm) melewati ambang waspada (${config.warnPpm} ppm).`;
+      } else {
+        banner.classList.add('border-l-emerald-500');
+        iconBox.className = 'p-3.5 rounded-2xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 shrink-0';
+        iconBox.innerHTML = '<i data-lucide="shield-check" class="w-8 h-8"></i>';
+        title.className = 'text-2xl sm:text-3xl font-extrabold tracking-tight text-emerald-600 dark:text-emerald-400';
+        title.textContent = 'KONDISI RUANGAN AMAN';
+        subtitle.textContent = 'Kadar gas LPG dan suhu ruangan berada dalam batas normal.';
+      }
+      lucide.createIcons({ nodes: [iconBox] });
+
+      // Trigger log & Auto-Safety saat transisi naik
+      if (currentStatus !== state.lastStatus) {
+        if (currentStatus === 'BAHAYA') {
+          addLog('ALERT', `STATUS BAHAYA TERDETEKSI! Gas: ${ppm} ppm, Suhu: ${suhu.toFixed(1)}°C`);
+          showToast('BAHAYA KEBOCORAN LPG!', `Kadar gas mencapai ${ppm} ppm!`, 'danger');
+          if (config.autoSafety) {
+            sendActuatorCommand('buzzer', true, true);
+            sendActuatorCommand('kipas', true, true);
+          }
+        } else if (currentStatus === 'WASPADA') {
+          addLog('ALERT', `Status berubah menjadi WASPADA (${ppm} ppm)`);
+          showToast('Peringatan Gas LPG', `Kadar gas meningkat ke ${ppm} ppm`, 'warn');
+          if (config.autoSafety) {
+            sendActuatorCommand('kipas', true, true);
+          }
+        } else if (state.lastStatus !== 'AMAN') {
+          addLog('SYS', `Kondisi kembali AMAN (${ppm} ppm)`);
+        }
+        state.lastStatus = currentStatus;
+      }
+    }
+
+    function handleIncomingSensorData(payload) {
+      const ppm = Math.max(0, Math.round(Number(payload.ppm ?? 0)));
+      const suhu = Number(payload.suhu ?? payload.temp ?? 0);
+      const hum = payload.kelembapan ?? payload.hum ?? Math.round(52 + (suhu % 10));
+      const rssi = payload.rssi ?? -64;
+
+      state.packetCount++;
+      const nowStr = new Date().toLocaleTimeString('id-ID', { hour12: false });
+
+      // Update Statistik Min/Max/Avg
+      state.stats.ppmMin = Math.min(state.stats.ppmMin, ppm);
+      state.stats.ppmMax = Math.max(state.stats.ppmMax, ppm);
+      state.stats.ppmSum += ppm;
+      const ppmAvg = Math.round(state.stats.ppmSum / state.packetCount);
+
+      state.stats.suhuMin = Math.min(state.stats.suhuMin, suhu);
+      state.stats.suhuMax = Math.max(state.stats.suhuMax, suhu);
+
+      // Update DOM KPI
+      $('val-ppm').textContent = ppm;
+      $('min-ppm').textContent = state.stats.ppmMin;
+      $('avg-ppm').textContent = ppmAvg;
+      $('max-ppm').textContent = state.stats.ppmMax;
+
+      const ppmPct = Math.min(100, Math.round((ppm / config.dangerPpm) * 100));
+      const barPpm = $('bar-ppm');
+      barPpm.style.width = ppmPct + '%';
+      barPpm.className = 'h-full rounded-full transition-all duration-300 ' +
+        (ppm >= config.dangerPpm ? 'bg-rose-500' : ppm >= config.warnPpm ? 'bg-amber-500' : 'bg-sky-500');
+
+      $('val-suhu').textContent = suhu.toFixed(1);
+      $('min-suhu').textContent = state.stats.suhuMin.toFixed(1);
+      $('max-suhu').textContent = state.stats.suhuMax.toFixed(1);
+      $('val-hum').textContent = hum;
+      $('bar-suhu').style.width = Math.min(100, Math.round((suhu / 60) * 100)) + '%';
+
+      const tagSuhu = $('tag-suhu');
+      if (suhu >= 36) {
+        tagSuhu.textContent = 'Panas';
+        tagSuhu.className = 'ml-auto px-2 py-0.5 text-[10px] font-bold rounded-full bg-rose-500/15 text-rose-500';
+      } else if (suhu <= 22) {
+        tagSuhu.textContent = 'Sejuk';
+        tagSuhu.className = 'ml-auto px-2 py-0.5 text-[10px] font-bold rounded-full bg-sky-500/15 text-sky-500';
+      } else {
+        tagSuhu.textContent = 'Normal';
+        tagSuhu.className = 'ml-auto px-2 py-0.5 text-[10px] font-bold rounded-full bg-emerald-500/15 text-emerald-500';
+      }
+
+      // Indeks Risiko
+      const riskScore = Math.min(100, Math.round((ppm / config.dangerPpm) * 85 + Math.max(0, suhu - 30) * 1.5));
+      $('val-risk').textContent = riskScore;
+      const tagRisk = $('tag-risk');
+      if (riskScore >= 75) {
+        tagRisk.textContent = 'Kritis';
+        tagRisk.className = 'ml-auto px-2 py-0.5 text-[10px] font-bold rounded-full bg-rose-500/15 text-rose-500';
+      } else if (riskScore >= 40) {
+        tagRisk.textContent = 'Sedang';
+        tagRisk.className = 'ml-auto px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-500/15 text-amber-500';
+      } else {
+        tagRisk.textContent = 'Rendah';
+        tagRisk.className = 'ml-auto px-2 py-0.5 text-[10px] font-bold rounded-full bg-emerald-500/15 text-emerald-500';
+      }
+
+      $('val-rssi').textContent = `${rssi} dBm`;
+      $('last-update').textContent = nowStr;
+      $('packet-counter').textContent = `Paket diterima: ${state.packetCount}`;
+
+      evaluateSafetyStatus(ppm, suhu);
+      pushChartData(nowStr, ppm, suhu);
+      addLog('MQTT', `RX ${config.nodeId}/sensor -> PPM: ${ppm}, Suhu: ${suhu.toFixed(1)}°C, Hum: ${hum}%`);
+    }
+
+    // ===== KONTROL AKTUATOR =====
+    function updateActuatorUI(name, isOn) {
+      if (name === 'buzzer') state.buzzerOn = !!isOn;
+      if (name === 'kipas') state.kipasOn = !!isOn;
+
+      const btn = $('btn-' + name);
+      const sub = $('sub-' + name);
+      const iconBox = $('icon-' + name);
+      const card = $('card-' + name);
+
+      btn.setAttribute('aria-pressed', !!isOn);
+      if (isOn) {
+        btn.textContent = 'MATIKAN';
+        btn.className = 'px-4 py-2 rounded-xl text-xs font-bold bg-sky-600 text-white shadow-md shadow-sky-600/25 hover:bg-sky-500 transition min-w-[84px]';
+        sub.textContent = 'Status: Menyala (1)';
+        sub.className = 'text-xs font-semibold text-sky-600 dark:text-sky-400';
+        iconBox.className = 'p-2.5 rounded-xl bg-sky-500 text-white transition';
+        card.classList.add('border-sky-500/40');
+        if (name === 'kipas') {
+          const fanSvg = iconBox.querySelector('svg');
+          if (fanSvg) fanSvg.classList.add('animate-spin-slow');
+        }
+      } else {
+        btn.textContent = 'NYALAKAN';
+        btn.className = 'px-4 py-2 rounded-xl text-xs font-bold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:opacity-90 transition min-w-[84px]';
+        sub.textContent = 'Status: Mati (0)';
+        sub.className = 'text-xs text-slate-500 dark:text-slate-400';
+        iconBox.className = 'p-2.5 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-500 transition';
+        card.classList.remove('border-sky-500/40');
+        if (name === 'kipas') {
+          const fanSvg = iconBox.querySelector('svg');
+          if (fanSvg) fanSvg.classList.remove('animate-spin-slow');
+        }
+      }
+    }
+
+    function sendActuatorCommand(name, targetState, isAuto = false) {
+      const topic = `${config.nodeId}/kontrol/${name}`;
+      const payload = targetState ? '1' : '0';
+
+      // Optimistic UI update (terutama berguna saat mode simulasi atau broker publik)
+      updateActuatorUI(name, targetState);
+
+      const sourceLabel = isAuto ? '[AUTO-SAFETY]' : '[MANUAL]';
+      addLog('CMD', `${sourceLabel} TX ${topic} -> ${payload} (Token: ${maskToken(config.token)})`);
+
+      if (state.mqttClient && state.connected) {
+        state.mqttClient.publish(topic, payload, { qos: 1 });
+      }
+    }
+
+    ['buzzer', 'kipas'].forEach(name => {
+      $('btn-' + name).addEventListener('click', () => {
+        if (!state.authenticated) {
+          openAuthModal();
+          return;
+        }
+        const nextState = name === 'buzzer' ? !state.buzzerOn : !state.kipasOn;
+        sendActuatorCommand(name, nextState, false);
+      });
+    });
+
+    // ===== KONEKSI MQTT & NODE-RED API DENGAN TOKEN =====
+    function maskToken(t) {
+      if (!t) return '••••••';
+      if (t.length <= 6) return '•••' + t.slice(-2);
+      return t.slice(0, 4) + '••••' + t.slice(-3);
+    }
+
+    async function fetchNodeRedHistory() {
+      if (!config.nodeRed) return;
+      $('val-db-status').textContent = 'Memuat...';
+      try {
+        const res = await fetch(`${config.nodeRed}/api/riwayat?limit=${MAX_POINTS}`, {
+          headers: {
+            'Authorization': `Bearer ${config.token}`,
+            'X-SORA-Token': config.token
+          }
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const rows = await res.json();
+        if (Array.isArray(rows)) {
+          rows.reverse().forEach(r => {
+            const label = new Date(r.waktu).toLocaleTimeString('id-ID', { hour12: false });
+            pushChartData(label, r.ppm, r.suhu);
+          });
+          $('val-db-status').textContent = 'Terhubung';
+          $('val-db-status').className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-500';
+          addLog('SYS', `Berhasil memuat ${rows.length} titik riwayat dari Node-RED API.`);
+        }
+      } catch (err) {
+        $('val-db-status').textContent = 'Offline / Lokal';
+        $('val-db-status').className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-amber-500';
+        addLog('SYS', `Node-RED API tidak terjangkau (${err.message}). Berjalan dalam mode stream langsung.`);
+      }
+    }
+
+    function connectServices() {
+      disconnectServices(false);
+
+      $('node-badge').textContent = config.nodeId;
+      $('topic-preview').textContent = `Topik: ${config.nodeId}/#`;
+      $('token-preview').textContent = maskToken(config.token);
+      $('lbl-danger-limit').textContent = `${config.dangerPpm} ppm`;
+      $('val-source-mode').textContent = config.simMode ? 'Simulator ESP32' : 'MQTT Broker';
+
+      // Ambil riwayat via REST API dengan Bearer Token
+      fetchNodeRedHistory();
+
+      // Jalankan Simulator jika diaktifkan
+      if (config.simMode) {
+        startSimulator();
+      }
+
+      // Hubungkan ke MQTT Broker WebSocket
+      setConnectionBadge('Menghubungkan...', 'connecting');
+      addLog('SYS', `Menghubungkan ke broker ${config.broker} dengan token autentikasi...`);
+
+      const connectOptions = {
+        clientId: 'sora_web_' + Math.random().toString(16).slice(2, 10),
+        reconnectPeriod: 4000,
+        connectTimeout: 8000,
+        // Gunakan kredensial MQTT kustom jika diisi, atau fallback menggunakan token
+        username: config.mqttUser || 'sora_token_auth',
+        password: config.mqttPass || config.token
+      };
+
+      try {
+        const client = mqtt.connect(config.broker, connectOptions);
+        state.mqttClient = client;
+
+        client.on('connect', () => {
+          state.connected = true;
+          if (!config.simMode) {
+            setConnectionBadge('MQTT Terhubung', 'connected');
+          }
+          const topics = [`${config.nodeId}/sensor`, `${config.nodeId}/aktuator`];
+          client.subscribe(topics, { qos: 1 });
+          addLog('SYS', `MQTT Terhubung! Subscribe ke: ${topics.join(', ')}`);
+          showToast('Koneksi Berhasil', `Terhubung ke ${config.nodeId}`, 'success');
+        });
+
+        client.on('reconnect', () => {
+          if (!config.simMode) setConnectionBadge('Menyambung ulang...', 'connecting');
+        });
+
+        client.on('offline', () => {
+          state.connected = false;
+          if (!config.simMode) setConnectionBadge('MQTT Terputus', 'offline');
+          addLog('SYS', 'Koneksi MQTT terputus / offline.');
+        });
+
+        client.on('error', (err) => {
+          addLog('ALERT', `Error MQTT: ${err.message}`);
+        });
+
+        client.on('message', (topic, message) => {
+          let data;
+          try {
+            data = JSON.parse(message.toString());
+          } catch (e) {
+            addLog('ALERT', `Payload JSON tidak valid pada topik ${topic}`);
+            return;
+          }
+
+          if (topic === `${config.nodeId}/sensor`) {
+            handleIncomingSensorData(data);
+          } else if (topic === `${config.nodeId}/aktuator`) {
+            if (typeof data.buzzer !== 'undefined') updateActuatorUI('buzzer', data.buzzer);
+            if (typeof data.kipas !== 'undefined') updateActuatorUI('kipas', data.kipas);
+            addLog('MQTT', `RX Status Aktuator -> Buzzer: ${data.buzzer}, Kipas: ${data.kipas}`);
+          }
+        });
+      } catch (err) {
+        addLog('ALERT', `Gagal menginisialisasi klien MQTT: ${err.message}`);
+        setConnectionBadge('URL Broker Invalid', 'offline');
+      }
+    }
+
+    function disconnectServices(lock = true) {
+      stopSimulator();
+      if (state.mqttClient) {
+        try { state.mqttClient.end(true); } catch (e) {}
+        state.mqttClient = null;
+      }
+      state.connected = false;
+      if (lock) {
+        state.authenticated = false;
+        setConnectionBadge('Terkunci', 'offline');
+        openAuthModal();
+        addLog('SYS', 'Sesi dikunci dan koneksi diputus oleh pengguna.');
+      }
+    }
+
+    // ===== SIMULATOR ESP32 VIRTUAL (UNTUK DEMO / TESTING TANPA HARDWARE) =====
+    let simPhase = 0;
+    function startSimulator() {
+      stopSimulator();
+      setConnectionBadge('Simulasi Aktif', 'sim');
+      $('quick-sim-label').textContent = 'Simulasi: ON';
+      $('btn-quick-sim').classList.add('border-amber-500', 'bg-amber-500/10');
+      addLog('SYS', 'Simulator ESP32 Virtual diaktifkan (interval 2 detik).');
+
+      const generateTick = () => {
+        simPhase++;
+        // Pola gelombang natural dengan sesekali lonjakan gas untuk menguji alarm
+        let basePpm = 280 + Math.sin(simPhase * 0.35) * 140 + (Math.random() * 60 - 30);
+        if (simPhase % 22 >= 15 && simPhase % 22 <= 18) {
+          // Simulasi lonjakan kebocoran gas sementara
+          basePpm = config.warnPpm + 350 + Math.random() * 400;
+        }
+        const simSuhu = 28.5 + Math.cos(simPhase * 0.2) * 2.2 + (Math.random() * 0.4 - 0.2);
+        const simHum = Math.round(58 + Math.sin(simPhase * 0.15) * 6);
+        const simRssi = -55 - Math.floor(Math.random() * 12);
+
+        handleIncomingSensorData({
+          ppm: Math.round(Math.max(80, basePpm)),
+          suhu: Number(simSuhu.toFixed(1)),
+          kelembapan: simHum,
+          rssi: simRssi
+        });
+      };
+
+      generateTick();
+      state.simTimer = setInterval(generateTick, 2000);
+    }
+
+    function stopSimulator() {
+      if (state.simTimer) {
+        clearInterval(state.simTimer);
+        state.simTimer = null;
+      }
+      $('quick-sim-label').textContent = 'Simulasi: OFF';
+      $('btn-quick-sim').classList.remove('border-amber-500', 'bg-amber-500/10');
+      if (state.connected) {
+        setConnectionBadge('MQTT Terhubung', 'connected');
+      }
+    }
+
+    // ===== MODAL AUTENTIKASI & STORAGE =====
+    function openAuthModal() {
+      $('input-token').value = config.token;
+      $('input-broker').value = config.broker;
+      $('input-nodeid').value = config.nodeId;
+      $('input-nodered').value = config.nodeRed;
+      $('input-mqtt-user').value = config.mqttUser;
+      $('input-mqtt-pass').value = config.mqttPass;
+      $('input-sim-mode').checked = config.simMode;
+
+      if (state.authenticated) {
+        $('btn-close-modal').classList.remove('hidden');
+      } else {
+        $('btn-close-modal').classList.add('hidden');
+      }
+      $('auth-modal').classList.remove('hidden');
+    }
+
+    function closeAuthModal() {
+      $('auth-modal').classList.add('hidden');
+    }
+
+    function saveConfig() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+    }
+
+    function loadSavedConfig() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          config = { ...config, ...parsed };
+          $('input-warn-ppm').value = config.warnPpm;
+          $('input-danger-ppm').value = config.dangerPpm;
+          $('toggle-auto-safety').checked = config.autoSafety;
+        }
+      } catch (e) {
+        console.warn('Gagal membaca localStorage', e);
+      }
+    }
+
+    // ===== EVENT LISTENERS =====
+    $('btn-fill-demo-token').addEventListener('click', () => {
+      const demoToken = 'SORA-LIVE-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+      $('input-token').value = demoToken;
+      $('input-token').type = 'text';
+      showToast('Token Demo Dibuat', `Token: ${demoToken}`, 'info');
+    });
+
+    $('btn-toggle-token-vis').addEventListener('click', () => {
+      const inp = $('input-token');
+      inp.type = inp.type === 'password' ? 'text' : 'password';
+    });
+
+    $('auth-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const tokenVal = $('input-token').value.trim();
+      if (tokenVal.length < 4) {
+        showToast('Token Tidak Valid', 'Masukkan Access Token minimal 4 karakter.', 'danger');
+        return;
+      }
+
+      config.token = tokenVal;
+      config.broker = $('input-broker').value.trim() || 'wss://broker.hivemq.com:8884/mqtt';
+      config.nodeId = $('input-nodeid').value.trim().replace(/\/+$/, '') || 'sora/lpg01';
+      config.nodeRed = $('input-nodered').value.trim().replace(/\/+$/, '');
+      config.mqttUser = $('input-mqtt-user').value.trim();
+      config.mqttPass = $('input-mqtt-pass').value;
+      config.simMode = $('input-sim-mode').checked;
+
+      state.authenticated = true;
+      saveConfig();
+      closeAuthModal();
+      addLog('SYS', `Autentikasi token berhasil (${maskToken(config.token)}).`);
+      connectServices();
+    });
+
+    $('btn-close-modal').addEventListener('click', closeAuthModal);
+    $('btn-open-settings').addEventListener('click', openAuthModal);
+    $('btn-lock-session').addEventListener('click', () => disconnectServices(true));
+
+    $('btn-reset-storage').addEventListener('click', () => {
+      localStorage.removeItem(STORAGE_KEY);
+      config.token = '';
+      config.mqttUser = '';
+      config.mqttPass = '';
+      config.simMode = false;
+      $('input-token').value = '';
+      $('input-mqtt-user').value = '';
+      $('input-mqtt-pass').value = '';
+      $('input-sim-mode').checked = false;
+      showToast('Konfigurasi Direset', 'Token dan pengaturan tersimpan telah dihapus.', 'warn');
+    });
+
+    $('btn-quick-sim').addEventListener('click', () => {
+      if (!state.authenticated) {
+        openAuthModal();
+        return;
+      }
+      config.simMode = !config.simMode;
+      saveConfig();
+      $('val-source-mode').textContent = config.simMode ? 'Simulator ESP32' : 'MQTT Broker';
+      if (config.simMode) {
+        startSimulator();
+        showToast('Simulator Aktif', 'Menampilkan data sensor virtual secara real-time.', 'info');
+      } else {
+        stopSimulator();
+        if (!state.connected) setConnectionBadge('MQTT Terputus', 'offline');
+        showToast('Simulator Dimatikan', 'Kembali menunggu data murni dari MQTT Broker.', 'info');
+      }
+    });
+
+    // Threshold & Auto-Safety Controls
+    $('input-warn-ppm').addEventListener('change', (e) => {
+      config.warnPpm = Math.max(50, Number(e.target.value) || 1000);
+      saveConfig();
+      addLog('SYS', `Ambang batas WASPADA diubah ke ${config.warnPpm} ppm`);
+    });
+
+    $('input-danger-ppm').addEventListener('change', (e) => {
+      config.dangerPpm = Math.max(config.warnPpm + 100, Number(e.target.value) || 2500);
+      $('lbl-danger-limit').textContent = `${config.dangerPpm} ppm`;
+      saveConfig();
+      addLog('SYS', `Ambang batas BAHAYA diubah ke ${config.dangerPpm} ppm`);
+    });
+
+    $('toggle-auto-safety').addEventListener('change', (e) => {
+      config.autoSafety = e.target.checked;
+      saveConfig();
+      addLog('SYS', `Auto-Safety Mitigasi: ${config.autoSafety ? 'AKTIF' : 'NONAKTIF'}`);
+    });
+
+    // Tombol Tes & Reset Alarm
+    $('btn-test-alarm').addEventListener('click', () => {
+      if (!state.authenticated) return openAuthModal();
+      sendActuatorCommand('buzzer', true, false);
+      sendActuatorCommand('kipas', true, false);
+      showToast('Tes Alarm Aktif', 'Perintah nyalakan Buzzer & Kipas dikirim.', 'warn');
+    });
+
+    $('btn-reset-alarm').addEventListener('click', () => {
+      if (!state.authenticated) return openAuthModal();
+      sendActuatorCommand('buzzer', false, false);
+      sendActuatorCommand('kipas', false, false);
+      state.lastStatus = 'AMAN';
+      showToast('Alarm Direset', 'Buzzer dan Kipas telah dimatikan.', 'success');
+    });
+
+    // Kontrol Grafik
+    $('btn-pause-chart').addEventListener('click', () => {
+      state.chartPaused = !state.chartPaused;
+      const btn = $('btn-pause-chart');
+      btn.innerHTML = state.chartPaused
+        ? '<i data-lucide="play" class="w-3.5 h-3.5 text-emerald-500"></i> <span>Lanjut</span>'
+        : '<i data-lucide="pause" class="w-3.5 h-3.5"></i> <span>Jeda</span>';
+      lucide.createIcons({ nodes: [btn] });
+    });
+
+    $('btn-clear-chart').addEventListener('click', () => {
+      telemetryChart.data.labels = [];
+      telemetryChart.data.datasets.forEach(ds => ds.data = []);
+      telemetryChart.update();
+      showToast('Grafik Dibersihkan', 'Data titik grafik telah dikosongkan.', 'info');
+    });
+
+    $('btn-export-csv').addEventListener('click', () => {
+      const labels = telemetryChart.data.labels;
+      if (!labels.length) {
+        showToast('Data Kosong', 'Belum ada data grafik untuk diekspor.', 'warn');
+        return;
+      }
+      const gas = telemetryChart.data.datasets[0].data;
+      const temp = telemetryChart.data.datasets[1].data;
+      let csv = 'Waktu,Gas_LPG_ppm,Suhu_C\n';
+      labels.forEach((lbl, idx) => {
+        csv += `${lbl},${gas[idx]},${temp[idx]}\n`;
+      });
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `sora-lpg-log-${Date.now()}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('Ekspor Berhasil', 'File CSV telemetri berhasil diunduh.', 'success');
+    });
+
+    // Filter & Clear Logs
+    $('log-filter').addEventListener('change', renderLogs);
+    $('btn-clear-logs').addEventListener('click', () => {
+      state.logs = [];
+      renderLogs();
+    });
+
+    // Dark / Light Theme Toggle
+    $('btn-theme').addEventListener('click', () => {
+      document.documentElement.classList.toggle('dark');
+    });
+
+    // Live Clock & Session Uptime
+    setInterval(() => {
+      $('live-clock').textContent = new Date().toLocaleTimeString('id-ID', { hour12: false });
+      const elapsedSec = Math.floor((Date.now() - state.startTime) / 1000);
+      const mins = String(Math.floor(elapsedSec / 60)).padStart(2, '0');
+      const secs = String(elapsedSec % 60).padStart(2, '0');
+      $('session-uptime').textContent = `Uptime: ${mins}:${secs}`;
+    }, 1000);
+
+    // ===== BOOTSTRAP APLIKASI =====
+    window.addEventListener('DOMContentLoaded', () => {
+      loadSavedConfig();
+      addLog('SYS', 'SORA Console v2.4 siap. Menunggu verifikasi Access Token...');
+
+      if (config.token) {
+        // Otomatis masuk jika sesi sebelumnya masih menyimpan token
+        state.authenticated = true;
+        closeAuthModal();
+        addLog('SYS', `Sesi dipulihkan dengan token tersimpan (${maskToken(config.token)}).`);
+        connectServices();
+      } else {
+        openAuthModal();
+      }
+    });
+  </script>
 </body>
 </html>
