@@ -1,0 +1,136 @@
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <WiFiClientSecure.h>
+#include <ArduinoJson.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+#include "secrets.h"   // berisi WIFI_SSID, WIFI_PASSWORD, GEMINI_API_KEY
+
+// ---------- OLED 0.96 inch ----------
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_RESET -1
+#define I2C_SDA 8
+#define I2C_SCL 9
+
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+// ---------- Gemini ----------
+const char* GEMINI_URL =
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent";
+
+void tampilkanPesan(const String& teks) {
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0);
+  display.println(teks);
+  display.display();
+}
+
+String tanyaGemini(const String& prompt) {
+  if (WiFi.status() != WL_CONNECTED) {
+    return "Wi-Fi terputus!";
+  }
+
+  WiFiClientSecure client;
+  client.setInsecure();  // tanpa verifikasi sertifikat (cukup untuk belajar)
+
+  HTTPClient https;
+  if (!https.begin(client, GEMINI_URL)) {
+    return "Gagal konek server";
+  }
+
+  https.addHeader("Content-Type", "application/json");
+  https.addHeader("x-goog-api-key", GEMINI_API_KEY);  // key lewat header, bukan di URL
+  https.setTimeout(20000);
+
+  // Susun request
+  JsonDocument doc;
+  doc["contents"][0]["parts"][0]["text"] =
+    "Jawab dalam bahasa Indonesia, sangat singkat maksimal 120 karakter, "
+    "tanpa simbol markdown atau emoji: " + prompt;
+  doc["generationConfig"]["maxOutputTokens"] = 100;
+  doc["generationConfig"]["thinkingConfig"]["thinkingBudget"] = 0;  // matikan thinking agar cepat
+
+  String body;
+  serializeJson(doc, body);
+
+  int httpCode = https.POST(body);
+  String hasil;
+
+  if (httpCode <= 0) {
+    hasil = "Error HTTP: " + String(httpCode);
+  } else {
+    String payload = https.getString();
+
+    if (httpCode != 200) {
+      Serial.println("--- PESAN ERROR DARI GOOGLE ---");
+      Serial.println("HTTP Code: " + String(httpCode));
+      Serial.println(payload);
+      Serial.println("-------------------------------");
+      hasil = "API Error " + String(httpCode) + " (Cek Serial)";
+    } else {
+      // Ambil hanya teks jawabannya
+      JsonDocument filter;
+      filter["candidates"][0]["content"]["parts"][0]["text"] = true;
+
+      JsonDocument res;
+      DeserializationError err =
+        deserializeJson(res, payload, DeserializationOption::Filter(filter));
+
+      if (err) {
+        Serial.print("JSON error: ");
+        Serial.println(err.c_str());
+        hasil = "Gagal baca JSON";
+      } else {
+        const char* teks = res["candidates"][0]["content"]["parts"][0]["text"];
+        hasil = teks ? String(teks) : "Jawaban kosong";
+      }
+    }
+  }
+
+  https.end();
+  hasil.trim();
+  hasil.replace("\n", " ");
+  return hasil;
+}
+
+void setup() {
+  Serial.begin(115200);
+  Wire.begin(I2C_SDA, I2C_SCL);
+
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println("OLED gagal!");
+    for (;;);
+  }
+
+  tampilkanPesan("Menghubungkan\nke Wi-Fi...");
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  tampilkanPesan("Wi-Fi Terhubung!\n\nKetik pertanyaan\ndi Serial Monitor.");
+  Serial.println("\nSiap! Ketik pertanyaan lalu tekan Enter:");
+}
+
+void loop() {
+  if (Serial.available()) {
+    String pertanyaan = Serial.readStringUntil('\n');
+    pertanyaan.trim();
+
+    if (pertanyaan.length() > 0) {
+      Serial.println("\nKamu: " + pertanyaan);
+      tampilkanPesan("Berpikir...");
+
+      String jawaban = tanyaGemini(pertanyaan);
+      Serial.println("Gemini: " + jawaban);
+      tampilkanPesan(jawaban);
+    }
+  }
+}
